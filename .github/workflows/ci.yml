@@ -1,0 +1,23 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The frontmatter is what decides whether the skill loads and triggers at all.
+      - name: SKILL.md frontmatter is valid
+        run: python3 scripts/check_skill.py
+
+      # Manuals are copyrighted and must never land here (see CLAUDE.md).
+      - name: no PDFs committed
+        run: |
+          found=$(git ls-files '*.pdf' '*.PDF')
+          [ -z "$found" ] || { echo "PDF files committed:"; echo "$found"; exit 1; }
