@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Manuals used for testing are usually copyrighted. They stay on your machine and are
+# never committed; put them here.
+manuals/
+*.pdf
+
+# Eval runs are agent transcripts: large and machine-specific.
+evals/runs/
+
+# Local issue-tracker and agent scaffolding. Private workflow state, not part of the
+# skill; an auto-generated AGENTS.md carries one person's setup, not instructions for
+# anyone installing this.
+.beads/
+.dolt/
+*.db
+.beads-credential-key
+/AGENTS.md
+
+# Agent session state and the scratch worktrees background jobs run in.
+.claude/
