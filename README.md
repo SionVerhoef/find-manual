@@ -9,7 +9,8 @@ opens the PDF at the hit. A 200-page manual costs ~300–650 tokens per answer i
 the whole document in context.
 
 **Status: in development.** The index and search core is validated (3 vendors, 42 test
-questions, 90 % top-1, 100 % top-3); the lookup workflow is being built. See
+questions, 90 % top-1, 100 % top-3), and storage, settings, first-run setup and cleanup
+are in; finding and downloading the manual (`fetch.py`) is being built. See
 [CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
@@ -61,9 +62,15 @@ on Windows):
 | Search index per manual revision | 30 days |
 | Private working copy of a PDF | 48 hours |
 
-`FIND_MANUAL_HOME` or the `storage_dir` setting moves all of it. Only the skill's own
-cleanup deletes anything, only its own files. Nothing is sent anywhere except the
-requests needed to find and download a manual.
+`FIND_MANUAL_HOME` or the `storage_dir` setting moves all of it; in a sandbox with a
+read-only home folder it falls back to the project's `.find-manual/` (gitignored), then
+to a temp folder for the session, and says so once. Only the skill's own `cleanup.py`
+deletes anything, only its own files, and pinned manuals (`cleanup.py pin <doc_id>`)
+stay. Above 500 MB of cache, PDF copies go first, then indexes, oldest first. Settings
+are changed by asking the agent ("keep PDFs for a week"), which runs
+`scripts/settings.py set retention.pdf_hours 1w`; `settings.py show` lists them.
+Nothing is sent anywhere except the requests needed to find and download a manual
+(`env_check.py` probes connectivity with a TCP connect only).
 
 ## Copyright
 
@@ -79,7 +86,9 @@ repo, vendor-neutral fixes only). `python3 tests/run_baselines.py` builds the in
 every test manual you keep in `manuals/` (gitignored; each `tests/testset_*.json` says
 where to get its PDF) and runs the test sets; `tests/evaluate.py` runs one set. Every
 change to indexing or ranking must keep the baselines (top-1 ≥ 38/42, top-3 42/42).
-`python3 -m unittest discover -s tests/unit` runs the unit tests, which need no PDFs.
+`python3 -m unittest discover -s tests/unit` runs the unit tests (storage, lock, atomic
+writes, settings, cleanup, env check, link building, patterns), which need no PDFs; set
+`FIND_MANUAL_HOME` to a scratch folder to keep them off your real data, as CI does.
 
 ## License
 

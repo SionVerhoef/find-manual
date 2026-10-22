@@ -8,10 +8,9 @@ description: "Finds the right manual and the right page for a question about a p
 Find the manual, find the page, read only that page, open the vendor's PDF at that spot.
 Answer only from what was read, with a citation and a confidence label.
 
-> **In development (M1–M2 built).** `env_check.py`, `setup.py`, `fetch.py` and `settings.py`
-> do not exist yet. Until they do: skip "First use" and step 2, take the PDF path or URL from
-> the user, run `scripts/build_index.py <pdf> [--url U]`, and continue from step 3 with the
-> `doc_id` it prints.
+> **In development (M1–M3 built).** `fetch.py` does not exist yet. Until it does: in step 2
+> take the PDF path or URL from the user, run `scripts/build_index.py <pdf> [--url U]`, and
+> continue from step 3 with the `doc_id` it prints.
 
 Scripts live in `scripts/` next to this file and need Python 3.9+ with `pypdfium2`.
 Every script prints one JSON object. A handled error comes back as
@@ -20,11 +19,24 @@ Details that do not fit here are in `reference/`.
 
 ## First use
 
-If `scripts/env_check.py` reports `first_run: true`, run `scripts/setup.py` once.
-It checks the environment, reports only problems, shows the defaults and where data
-lives (three lines), and offers once to take supplier doc-portal links or a local
-manuals folder. It asks no settings questions. Then continue with the user's question.
-Settings change by asking ("keep PDFs for a week" → `scripts/settings.py set ...`).
+Run `scripts/env_check.py` at the start of a session. If it reports `first_run: true`,
+run `scripts/setup.py` once: it checks the environment, reports only `problems` (each
+with its fallback), gives three `lines` (defaults, data folder, cache folder) to show
+the user, and on the first run one `optional` question to put to the user once: supplier
+doc-portal links or a local manuals folder, or skip. Save their answer with
+`scripts/settings.py add suppliers <url>` / `add manuals_dirs <path>`. It asks no
+settings questions; in a headless run the defaults apply. Then continue with the
+user's question. If either script returns a `notice` (data kept in the project or a
+temp folder because the home folder is not writable), tell the user once.
+
+## Settings and housekeeping
+
+Settings change by asking, never by a questionnaire: "keep PDFs for a week" →
+`scripts/settings.py set retention.pdf_hours 1w`; "stop asking so often" →
+`scripts/settings.py set doubt_threshold 0.95`; `scripts/settings.py show` lists them.
+`scripts/cleanup.py` removes only the skill's own stale files (PDF copies after 48 h,
+indexes after 30 d, catalog entries after 90 d, more when the cache passes 500 MB)
+and runs at the start of a lookup. "Keep this manual" → `scripts/cleanup.py pin <doc_id>`.
 
 ## Workflow for every lookup
 

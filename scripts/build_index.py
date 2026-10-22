@@ -322,17 +322,18 @@ def main():
         # stale schema or a different document under this name: rebuild below
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(out.name + ".tmp")
-    if tmp.exists():
-        tmp.unlink()
-    try:
-        stats = build(pdf, tmp, doc_id, url=a.url)
-    except pdfium.PdfiumError as e:
+    tmp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
+    with storage.lock():   # one writer at a time; the build lands atomically
         if tmp.exists():
             tmp.unlink()
-        storage.fail("bad_pdf", f"{pdf.name}: {e}",
-                     "the file is not a readable PDF (encrypted or damaged): download it again or ask the user for another copy")
-    os.replace(tmp, out)
+        try:
+            stats = build(pdf, tmp, doc_id, url=a.url)
+        except pdfium.PdfiumError as e:
+            if tmp.exists():
+                tmp.unlink()
+            storage.fail("bad_pdf", f"{pdf.name}: {e}",
+                         "the file is not a readable PDF (encrypted or damaged): download it again or ask the user for another copy")
+        os.replace(tmp, out)
     result = dict(stats, index=str(out), cached=False, size=out.stat().st_size,
                   storage=storage.resolve()["source"] if not a.out else "explicit")
     if stats["text_pages"] == 0:

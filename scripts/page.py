@@ -122,6 +122,8 @@ def image(meta, page, scale=1.5):
     if not src or not Path(src).exists():
         storage.fail("no_pdf", "the PDF working copy is gone",
                      "fetch the manual again with scripts/fetch.py get, then retry")
+    if Path(src).resolve().parent == storage.pdf_dir().resolve():
+        storage.mark_used(src)   # a private working copy: keep it from cleanup a while longer
     pdf = pdfium.PdfDocument(src)
     if not 1 <= page <= len(pdf):
         storage.fail("no_page", f"page {page} is not in the PDF ({len(pdf)} pages)",

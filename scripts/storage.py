@@ -2,7 +2,7 @@
 """Where find-manual keeps its private data, plus the helpers every script shares.
 
 Nothing here is ever written into the repository or the skill folder. All data lives
-in a data folder (settings, catalog, vendor maps) and a cache folder (indexes, PDF
+in a data folder (settings, catalog, pins, vendor maps) and a cache folder (indexes, PDF
 working copies, page images). Location, first match wins:
 
   1. FIND_MANUAL_HOME environment variable          (data = that folder, cache below it)
@@ -11,23 +11,34 @@ working copies, page images). Location, first match wins:
   4. the project's .find-manual/ folder               (sandboxes with a read-only home)
   5. a temporary folder                               (this session only)
 
+config.json itself always sits in the first writable "base" folder of 1, 3, 4, 5: it is
+what holds the storage_dir pointer, so it cannot move with it.
+
 Layout:
-  <data>/config.json  catalog.json  vendors/
+  <data>/config.json  catalog.json  pins.json  vendors/<host>.json  .lock
   <cache>/index/<doc_id>.sqlite   pdf/<doc_id>.pdf   img/<doc_id>-p<page>.png
 
-M3 adds the lock file, atomic writes, settings.py and cleanup.py on top of this.
+Writers (build_index, settings, setup, cleanup, fetch) take the lock and write
+atomically (temp file + os.replace); readers (search, page) never lock. Every use of an
+index or PDF bumps its mtime, which is what cleanup.py reads as "last used".
 """
+import contextlib
 import hashlib
 import json
 import os
+import random
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 APP = "find-manual"
 SCHEMA_VERSION = 3   # index layout; build_index.py writes it, readers reject older files
 ENV_HOME = "FIND_MANUAL_HOME"
 SKILL_ROOT = Path(__file__).resolve().parent.parent
+
+LOCK_TIMEOUT = 30.0        # seconds a writer waits for another tool before giving up
+LOCK_STALE = 600.0         # a lock older than this whose process is gone is broken
 
 
 # ---- output -----------------------------------------------------------------
@@ -59,7 +70,7 @@ def os_dirs():
 def _writable(p: Path) -> bool:
     try:
         p.mkdir(parents=True, exist_ok=True)
-        probe = p / ".write-test"
+        probe = p / f".write-test-{os.getpid()}"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
         return True
@@ -78,32 +89,47 @@ _resolved = None
 
 
 def resolve():
-    """{"data": Path, "cache": Path, "source": "env|setting|os|project|temp"}; cached per process."""
+    """Where everything lives; cached per process.
+
+    {"base": Path (holds config.json), "config": Path, "data": Path, "cache": Path,
+     "source": "env|setting|os|project|temp", "notice": str or ""}
+    """
     global _resolved
     if _resolved:
         return _resolved
-    candidates = []
+    os_data, os_cache = os_dirs()
+    uid = os.getuid() if hasattr(os, "getuid") else "user"
+    tmp = Path(tempfile.gettempdir()) / f"{APP}-{uid}"
+    proj = Path.cwd() / f".{APP}"
+    bases = []
     env = os.environ.get(ENV_HOME)
     if env:
         h = Path(env).expanduser()
-        candidates.append((h, h / "cache", "env"))
-    os_data, os_cache = os_dirs()
-    cfg = read_json(Path(env).expanduser() / "config.json") if env else {}
-    cfg = cfg or read_json(os_data / "config.json")
-    if cfg.get("storage_dir"):
-        h = Path(cfg["storage_dir"]).expanduser()
-        candidates.append((h, h / "cache", "setting"))
-    candidates.append((os_data, os_cache, "os"))
-    proj = Path.cwd() / f".{APP}"
-    candidates.append((proj, proj / "cache", "project"))
-    uid = os.getuid() if hasattr(os, "getuid") else "user"
-    tmp = Path(tempfile.gettempdir()) / f"{APP}-{uid}"
-    candidates.append((tmp, tmp / "cache", "temp"))
-    for data, cache, source in candidates:
-        if _writable(data) and _writable(cache):
-            _resolved = {"data": data, "cache": cache, "source": source}
-            return _resolved
-    fail("no_storage", "no writable folder for find-manual data",
+        bases.append((h, h, h / "cache", "env"))
+    bases += [(os_data, os_data, os_cache, "os"),
+              (proj, proj, proj / "cache", "project"),
+              (tmp, tmp, tmp / "cache", "temp")]
+    for base, data, cache, source in bases:
+        if not (_writable(base) and _writable(data) and _writable(cache)):
+            continue
+        notice = ""
+        cfg = read_json(base / "config.json")
+        if cfg.get("storage_dir"):
+            h = Path(cfg["storage_dir"]).expanduser()
+            if _writable(h) and _writable(h / "cache"):
+                data, cache, source = h, h / "cache", "setting"
+            else:
+                notice = f"storage_dir {h} is not writable; using {data} instead"
+        if source == "project":
+            notice = (f"the home folder is not writable, so data is kept in {data} (gitignored); "
+                      f"allow writing to {os_data} to share it with other tools")
+        elif source == "temp":
+            notice = (f"no writable home or project folder, so data is kept in {data} for this "
+                      f"session only; set {ENV_HOME} to a writable folder to keep it")
+        _resolved = {"base": base, "config": base / "config.json", "data": data, "cache": cache,
+                     "source": source, "notice": notice}
+        return _resolved
+    fail("no_storage", f"no writable folder for {APP} data",
          f"set {ENV_HOME} to a writable folder and run the command again")
 
 
@@ -119,6 +145,15 @@ def data_dir() -> Path:
 
 def cache_dir() -> Path:
     return resolve()["cache"]
+
+
+def config_path() -> Path:
+    return resolve()["config"]
+
+
+def first_run() -> bool:
+    """True until setup.py has written config.json."""
+    return not config_path().exists()
 
 
 def _sub(name) -> Path:
@@ -139,12 +174,147 @@ def image_dir() -> Path:
     return _sub("img")
 
 
+def vendors_dir() -> Path:
+    p = data_dir() / "vendors"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def catalog_path() -> Path:
+    return data_dir() / "catalog.json"
+
+
+def pins_path() -> Path:
+    return data_dir() / "pins.json"
+
+
 # ---- settings ---------------------------------------------------------------
+def defaults() -> dict:
+    return read_json(SKILL_ROOT / "defaults.json")
+
+
 def settings() -> dict:
-    """defaults.json from the skill, overridden by config.json from the data folder."""
-    s = read_json(SKILL_ROOT / "defaults.json")
-    s.update(read_json(data_dir() / "config.json"))
+    """defaults.json from the skill, overridden by config.json from the data folder.
+
+    One level of nesting is merged (retention.pdf_hours alone leaves the other
+    retention keys at their defaults)."""
+    s = defaults()
+    for k, v in read_json(config_path()).items():
+        if isinstance(v, dict) and isinstance(s.get(k), dict):
+            s[k] = dict(s[k], **v)
+        else:
+            s[k] = v
     return s
+
+
+# ---- safe writes ------------------------------------------------------------
+def write_atomic(path, data):
+    """Write bytes or text to `path` through a temp file in the same folder + os.replace,
+    so a reader never sees a half-written file and a crash leaves the old one intact."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        if isinstance(data, str):
+            tmp.write_text(data, encoding="utf-8")
+        else:
+            tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return path
+
+
+def write_json(path, obj):
+    return write_atomic(path, json.dumps(obj, indent=1, ensure_ascii=False) + "\n")
+
+
+class Locked(Exception):
+    """Another find-manual process holds the write lock."""
+
+
+def _lock_stale(path: Path) -> bool:
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return False          # gone already
+    if age > LOCK_STALE:
+        return True
+    info = read_json(path)
+    pid = info.get("pid")
+    if os.name != "nt" and isinstance(pid, int) and pid != os.getpid():
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True       # the holder died without unlinking
+        except PermissionError:
+            return False      # alive, another user
+    return False
+
+
+@contextlib.contextmanager
+def lock(timeout=LOCK_TIMEOUT, busy="fail"):
+    """Exclusive lock for writers (index build, settings, cleanup, downloads).
+
+    Retries with a short random sleep until `timeout` seconds have passed. A stale lock
+    (holder gone, or older than LOCK_STALE) is removed. On timeout, busy="fail" prints
+    the handled error and exits; busy="raise" raises Locked so the caller can skip.
+    """
+    path = data_dir() / ".lock"
+    deadline = time.monotonic() + timeout
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            if _lock_stale(path):
+                with contextlib.suppress(OSError):
+                    path.unlink()
+                continue
+            if time.monotonic() >= deadline:
+                msg = f"another {APP} process holds {path}"
+                if busy == "raise":
+                    raise Locked(msg)
+                fail("locked", msg, "wait a few seconds and run the command again")
+            time.sleep(0.05 + random.random() * 0.15)
+    try:
+        os.write(fd, json.dumps({"pid": os.getpid(), "time": time.time(),
+                                 "tool": Path(sys.argv[0]).name}).encode())
+        os.close(fd)
+        yield path
+    finally:
+        with contextlib.suppress(OSError):
+            path.unlink()
+
+
+def mark_used(path):
+    """Bump the mtime: cleanup.py keeps what was used recently."""
+    with contextlib.suppress(OSError):
+        os.utime(path, None)
+
+
+# ---- pins -------------------------------------------------------------------
+def pins() -> dict:
+    """{doc_id: {"since": ISO date, "note": str}}; pinned manuals are never cleaned up."""
+    p = read_json(pins_path())
+    return p if isinstance(p, dict) else {}
+
+
+def pin(doc_id, note=""):
+    p = pins()
+    p[doc_id] = {"since": time.strftime("%Y-%m-%d"), "note": note}
+    write_json(pins_path(), p)
+    return p[doc_id]
+
+
+def unpin(doc_id) -> bool:
+    p = pins()
+    if doc_id not in p:
+        return False
+    del p[doc_id]
+    write_json(pins_path(), p)
+    return True
 
 
 # ---- documents --------------------------------------------------------------
@@ -159,6 +329,10 @@ def doc_id_for(path) -> str:
 
 def index_path(doc_id) -> Path:
     return index_dir() / f"{doc_id}.sqlite"
+
+
+def pdf_path(doc_id) -> Path:
+    return pdf_dir() / f"{doc_id}.pdf"
 
 
 def find_index(ref):
@@ -190,4 +364,5 @@ def open_index(ref):
     if meta.get("schema") != str(SCHEMA_VERSION):
         fail("stale_index", f"{path} has schema {meta.get('schema')}, current is {SCHEMA_VERSION}",
              f"rebuild it: scripts/build_index.py {meta.get('source_path', '<pdf>')} --force")
+    mark_used(path)
     return db, meta, path
