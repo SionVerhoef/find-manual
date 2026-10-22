@@ -21,3 +21,10 @@ evals/runs/
 
 # Agent session state and the scratch worktrees background jobs run in.
 .claude/
+
+# Private working data if the skill falls back to the project folder (sandboxes).
+.find-manual/
+
+# Indexes built from manuals contain manual text. Never commit them.
+*.sqlite
+*.sqlite-journal

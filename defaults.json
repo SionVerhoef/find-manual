@@ -1,0 +1,16 @@
+{
+  "storage_dir": null,
+  "manuals_dirs": [],
+  "suppliers": [],
+  "retention": {
+    "catalog_days": 90,
+    "index_days": 30,
+    "pdf_hours": 48,
+    "vendor_map_days": 90
+  },
+  "max_cache_mb": 500,
+  "answer_language": "en",
+  "manual_languages": ["en"],
+  "doubt_threshold": 0.85,
+  "vendor_map_refresh_days": 7
+}
