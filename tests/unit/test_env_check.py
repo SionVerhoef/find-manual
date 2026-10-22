@@ -68,7 +68,8 @@ class Setup(EnvCheck):
         r = setup.run(suppliers=["https://docs.vendor.example", "ftp://no"],
                       manuals_dirs=[str(folder), str(folder / "missing")], network=False)
         self.assertEqual(r["added"], {"suppliers": ["https://docs.vendor.example"], "manuals_dirs": [str(folder)]})
-        self.assertEqual(len(r["problems"]), 2)
+        setup_problems = [x for x in r["problems"] if "supplier" in x["problem"] or "not a folder" in x["problem"]]
+        self.assertEqual(len(setup_problems), 2)   # env problems (no pypdfium2 on CI) may add more
         self.assertFalse(r["ok"])
         self.assertNotIn("optional", r)
         s = storage.settings()
