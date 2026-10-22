@@ -10,8 +10,8 @@ names the next route below.
 | Python missing or older than 3.9 | Use the agent's own web fetch and PDF reading on a few pages, with no index. Say so once. |
 | PDF library missing | `pip install --user pypdfium2` → `pypdf` → `pdftotext` if already installed. `env_check.py` reports which one is in use. |
 | Home folder not writable (sandbox) | Project `.find-manual/` (gitignored) → temp folder for this session only. `env_check.py` and `setup.py` return a `notice` saying which and how to allow the home folder: tell the user once. |
-| No network | Local manuals folder, cached index, or a PDF the user attaches. |
-| Download blocked (403, bot check) | The agent's web fetch tool → ask the user to download the PDF and give the path. |
+| No network | `fetch.py` returns `no_network`: use the local manuals folder (`settings.py add manuals_dirs`), the cached index (a cached URL is served without its daily check), or a PDF the user attaches (`fetch.py get --path`). |
+| Download blocked (403, bot check, a web page instead of the PDF) | `fetch.py` returns `download_blocked` or `not_a_pdf`: fetch the link with the agent's own web fetch tool and save the PDF → ask the user to download it and give the path → `fetch.py get --path <file>`. |
 | No browser tool | OS `open` / `xdg-open` / `start` → page image inline (`page.py image`) → plain link. |
 | PDF has no bookmarks | Headings detected from font size and the printed contents pages (done at build time). |
 | Scanned PDF (no text layer) | Page image to the agent; OCR only with the user's permission. |
@@ -19,6 +19,8 @@ names the next route below.
 | Cache above `max_cache_mb` or files unused past retention | `cleanup.py` removes PDF copies first, then indexes, oldest first; pinned manuals stay. A missing working copy is fetched again. |
 | Two tools at once | Writers (index build, settings, cleanup, downloads) take `<data>/.lock`, retry for 30 s and break a stale lock; readers never wait. All writes land atomically. A `locked` error means retry in a few seconds. |
 | Cloud session | Works normally, starts empty each session. |
-| Manual newer than the device's firmware | Look for an older issue in the vendor archive; if none, warn that some functions may not exist on that device. |
-| Firmware unknown | Ask. If the manual says where to read the version, pass that on. |
+| Manual newer than the device's firmware | `fetch.py` labels it Unsure with a `warning`: look for an older issue in the vendor archive (`resolve --url` on each); if there is none, use it and warn that some functions may not exist on that device. |
+| Firmware unknown | `resolve` returns `ask_firmware: true`: ask. Pass on `firmware_hint` (the parameter or page where the manual says the version is shown), then run `resolve` again with `--firmware V`. |
+| Nothing found on this machine | `resolve` returns `next: web_search` with queries: search with the agent's own web tool, the vendor's own domain first, and run `resolve --model M --url U` per PDF link so the script verifies and labels it. |
+| The link or file is not that model's manual | `model_match: none`, label Unsure, and the lookup goes on to the other routes: tell the user and follow `next`. |
 | Weak search results | Rewrite the query again (up to 2 more variants) → pick a section from the compact outline (`search.py --outline`) and search inside it. |

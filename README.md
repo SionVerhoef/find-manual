@@ -9,9 +9,9 @@ opens the PDF at the hit. A 200-page manual costs ~300–650 tokens per answer i
 the whole document in context.
 
 **Status: in development.** The index and search core is validated (3 vendors, 42 test
-questions, 90 % top-1, 100 % top-3), and storage, settings, first-run setup and cleanup
-are in; finding and downloading the manual (`fetch.py`) is being built. See
-[CHANGELOG.md](CHANGELOG.md).
+questions, 90 % top-1, 100 % top-3); storage, settings, first-run setup, cleanup, and
+finding, verifying, downloading and cataloguing the manual (`fetch.py`) are in. Next is
+the end-to-end run in Claude Code desktop. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
 
@@ -87,8 +87,9 @@ every test manual you keep in `manuals/` (gitignored; each `tests/testset_*.json
 where to get its PDF) and runs the test sets; `tests/evaluate.py` runs one set. Every
 change to indexing or ranking must keep the baselines (top-1 ≥ 38/42, top-3 42/42).
 `python3 -m unittest discover -s tests/unit` runs the unit tests (storage, lock, atomic
-writes, settings, cleanup, env check, link building, patterns), which need no PDFs; set
-`FIND_MANUAL_HOME` to a scratch folder to keep them off your real data, as CI does.
+writes, settings, cleanup, env check, link building, patterns, fetching and verification
+against a fake HTTP server), which need no PDFs and no network; set `FIND_MANUAL_HOME` to
+a scratch folder to keep them off your real data, as CI does.
 
 ## License
 

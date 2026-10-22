@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- M4 `scripts/fetch.py`: `resolve` finds the manual for a model (user link or file, catalog,
+  vendor document maps, local manuals folders) and verifies each candidate from the
+  document itself (title page and front matter: model with placeholders and family names,
+  doc type, issue and date, firmware range against `--firmware`, language) with the
+  Verified / Likely / Unsure label, evidence, `ask_firmware` and the manual's own hint on
+  where to read the device's software version; nothing found → `next: web_search` with
+  queries, the agent searches and calls `resolve --url` per link. `get` downloads a private
+  working copy with a plain User-Agent (a 403, a bot check or a web page instead of the
+  PDF, and no network are handled errors with their fallback), hashes it, builds or reuses
+  the index with the clean URL, and writes the catalog; tracking parameters are stripped
+  from every URL; a cached URL gets one HEAD check a day and a changed file a new doc_id.
+  `reference/verification.md` holds the rules; 45 unit tests against a tiny generated PDF
+  and a fake HTTP server, no network.
 - M3 storage, settings and housekeeping: `scripts/env_check.py` (python, PDF library,
   FTS5, where data lives, network, browser hint, `first_run`), `scripts/setup.py` (first
   run: problems only, three lines, one optional question, writes `config.json`),

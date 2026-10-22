@@ -8,10 +8,6 @@ description: "Finds the right manual and the right page for a question about a p
 Find the manual, find the page, read only that page, open the vendor's PDF at that spot.
 Answer only from what was read, with a citation and a confidence label.
 
-> **In development (M1–M3 built).** `fetch.py` does not exist yet. Until it does: in step 2
-> take the PDF path or URL from the user, run `scripts/build_index.py <pdf> [--url U]`, and
-> continue from step 3 with the `doc_id` it prints.
-
 Scripts live in `scripts/` next to this file and need Python 3.9+ with `pypdfium2`.
 Every script prints one JSON object. A handled error comes back as
 `{"error", "message", "fallback"}` with exit code 0: follow the `fallback`, do not stop.
@@ -43,17 +39,25 @@ and runs at the start of a lookup. "Keep this manual" → `scripts/cleanup.py pi
 1. **Parse the question.** Product/model, topic, IDs (parameters, fault/trip codes,
    figure or table numbers) and firmware if given.
 
-2. **Find the manual.** `scripts/fetch.py resolve --model M [--doc-type T] [--url U | --path P]`
-   returns candidates with a confidence label. Lookup order: link or file from the user →
-   catalog of manuals used before → vendor document maps → local manuals folder → web
-   search, vendor's own domain first. Then `scripts/fetch.py get --url U | --path P`
-   downloads a private working copy and builds the index.
+2. **Find the manual.** `scripts/fetch.py resolve --model M [--doc-type T] [--firmware V]
+   [--url U | --path P] [--vendor DOMAIN]` looks at the link or file from the user, the
+   catalog of manuals used before, the vendor document maps and the local manuals folder,
+   verifies every candidate from its own title page and front matter, and returns
+   `candidates` best first, each with a `label`. It stops at the first **Verified** one.
+   `"next": "web_search"` means nothing was found on this machine: search with your own
+   web tool using the `queries` given, the vendor's own domain first, and run
+   `resolve --model M --url U` for each PDF link, best first; the script downloads it,
+   verifies it and labels it. Then `scripts/fetch.py get --url U | --path P` returns the
+   `doc_id`, the private working copy and the index (cached from the second time on).
+   The rules, the `--doc-type` words and the catalog are in `reference/verification.md`.
    - **Verified**: model and firmware range stated and matching → go on.
    - **Likely**: model matches, no firmware range stated → confirm with the user first
      (title, issue/version, link).
-   - **Unsure**: close candidates or a firmware mismatch → ask first.
-   - Firmware unknown → ask. If the manual says where to read the version (for example
-     a parameter that shows the software version), tell the user.
+   - **Unsure**: close candidates, a partial match or a firmware mismatch → ask first.
+   - `ask_firmware: true` → ask for the device's firmware. Pass `firmware_hint` on when
+     given (where the manual says to read it), then run `resolve` again with `--firmware V`.
+   - A `warning` that the manual is newer than the device's firmware → look for an older
+     issue; if there is none, say that some functions may not exist on that device.
 
 3. **Rewrite the question, every time.** Turn it into English search terms in the
    manual's own vocabulary: the manual's words, synonyms, and IDs in the manual's format
