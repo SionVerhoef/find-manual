@@ -16,6 +16,12 @@ jobs:
       - name: SKILL.md frontmatter is valid
         run: python3 scripts/check_skill.py
 
+      # Pure-Python checks: patterns, link building, storage. No PDFs, no pypdfium2.
+      - name: unit tests
+        run: python3 -m unittest discover -s tests/unit -v
+        env:
+          FIND_MANUAL_HOME: ${{ runner.temp }}/find-manual
+
       # Manuals are copyrighted and must never land here (see CLAUDE.md).
       - name: no PDFs committed
         run: |

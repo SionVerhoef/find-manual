@@ -1,0 +1,110 @@
+{
+ "manual": "Bosch Rexroth IndraDrive HCS01 Instruction Manual, edition 07 (R911325518)",
+ "file": "hcs01.pdf",
+ "source": "Bosch Rexroth media directory: R911325518, edition 07 (IndraDrive HCS01 instruction manual)",
+ "note": "query = agent rewrite; raw = user wording. expected = physical pages verified by reading the text (printed labels are 2 lower). file = name under manuals/ (gitignored); baseline = minimum top-1 / top-3 that evaluate.py enforces.",
+ "baseline": {
+  "top1": 10,
+  "top3": 10
+ },
+ "cases": [
+  {
+   "id": 1,
+   "type": "topic",
+   "raw": "PE wire size",
+   "query": "minimum cross section equipment grounding conductor",
+   "expected": [
+    7
+   ]
+  },
+  {
+   "id": 2,
+   "type": "topic",
+   "raw": "max ambient temp",
+   "query": "ambient temperature nominal data",
+   "expected": [
+    9,
+    10,
+    11
+   ]
+  },
+  {
+   "id": 3,
+   "type": "topic",
+   "raw": "which fuse do I need",
+   "query": "branch circuit protection fuse overcurrent protection",
+   "expected": [
+    19,
+    9,
+    10
+   ]
+  },
+  {
+   "id": 4,
+   "type": "topic",
+   "raw": "wiring diagram",
+   "query": "connection diagram",
+   "expected": [
+    20
+   ]
+  },
+  {
+   "id": 5,
+   "type": "topic",
+   "raw": "connect motor temperature sensor",
+   "query": "motor thermal sensor connection",
+   "expected": [
+    20
+   ]
+  },
+  {
+   "id": 6,
+   "type": "topic",
+   "raw": "battery warnings",
+   "query": "battery safety",
+   "expected": [
+    7
+   ]
+  },
+  {
+   "id": 7,
+   "type": "topic",
+   "raw": "cooling airflow",
+   "query": "air intake air outlet cooling",
+   "expected": [
+    12
+   ]
+  },
+  {
+   "id": 8,
+   "type": "topic",
+   "raw": "UL file number",
+   "query": "UL files listing",
+   "expected": [
+    9,
+    10
+   ]
+  },
+  {
+   "id": 9,
+   "type": "topic",
+   "raw": "how big is it",
+   "query": "dimensions device width height depth",
+   "expected": [
+    9,
+    11,
+    13,
+    14
+   ]
+  },
+  {
+   "id": 10,
+   "type": "topic",
+   "raw": "who do I call for support",
+   "query": "service support contact helpdesk",
+   "expected": [
+    23
+   ]
+  }
+ ]
+}

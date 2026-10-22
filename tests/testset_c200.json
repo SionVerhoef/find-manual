@@ -1,0 +1,214 @@
+{
+ "manual": "Commander C200/C300 Control User Guide, issue 2 (0478-0535-02)",
+ "file": "c200.pdf",
+ "source": "https://cdn-static.nidec-netherlands.nl/media/3949-frequentieregelaars-commander-c200-c300-control-user-guide-en-iss2-0478-0535-02.pdf",
+ "note": "query = what the agent sends after rewriting; raw = what a user might type. expected = acceptable pages, first = best. file = name under manuals/ (gitignored); baseline = minimum top-1 / top-3 that evaluate.py enforces.",
+ "baseline": {
+  "top1": 19,
+  "top3": 20
+ },
+ "cases": [
+  {
+   "id": 1,
+   "type": "id",
+   "raw": "what does OI.AC mean?",
+   "query": "OI.AC trip",
+   "expected": [
+    158
+   ]
+  },
+  {
+   "id": 2,
+   "type": "id",
+   "raw": "drive shows PH.Lo",
+   "query": "PH.Lo supply phase loss trip",
+   "expected": [
+    161
+   ]
+  },
+  {
+   "id": 3,
+   "type": "id",
+   "raw": "default of Pr 2.11?",
+   "query": "Pr 02.011 acceleration rate 1 default",
+   "expected": [
+    100
+   ]
+  },
+  {
+   "id": 4,
+   "type": "id",
+   "raw": "It.br trip after stopping",
+   "query": "It.br braking resistor overload trip",
+   "expected": [
+    156
+   ]
+  },
+  {
+   "id": 5,
+   "type": "topic",
+   "raw": "how do I set the motor rated current?",
+   "query": "motor rated current nameplate set parameter",
+   "expected": [
+    41,
+    63,
+    61,
+    62
+   ]
+  },
+  {
+   "id": 6,
+   "type": "topic",
+   "raw": "how to do an autotune",
+   "query": "autotune rotating stationary test",
+   "expected": [
+    48,
+    61,
+    62,
+    64,
+    68
+   ]
+  },
+  {
+   "id": 7,
+   "type": "topic",
+   "raw": "replace the clock battery",
+   "query": "real time clock battery replacement",
+   "expected": [
+    18
+   ]
+  },
+  {
+   "id": 8,
+   "type": "topic",
+   "raw": "STO wiring",
+   "query": "safe torque off STO input",
+   "expected": [
+    23,
+    24,
+    20,
+    22
+   ]
+  },
+  {
+   "id": 9,
+   "type": "topic",
+   "raw": "lock parameters with a code",
+   "query": "user security code lock parameters",
+   "expected": [
+    29
+   ]
+  },
+  {
+   "id": 10,
+   "type": "topic",
+   "raw": "modbus address",
+   "query": "serial address modbus RTU slave address",
+   "expected": [
+    30,
+    72
+   ]
+  },
+  {
+   "id": 11,
+   "type": "topic",
+   "raw": "use analog input 1 as 4-20mA",
+   "query": "analog input 1 mode 4-20 mA current",
+   "expected": [
+    43,
+    119,
+    21
+   ]
+  },
+  {
+   "id": 12,
+   "type": "topic",
+   "raw": "skip a resonance frequency",
+   "query": "skip frequency band",
+   "expected": [
+    95,
+    96
+   ]
+  },
+  {
+   "id": 13,
+   "type": "topic",
+   "raw": "change switching frequency",
+   "query": "switching frequency",
+   "expected": [
+    71,
+    47
+   ]
+  },
+  {
+   "id": 14,
+   "type": "topic",
+   "raw": "factory reset",
+   "query": "restore parameter defaults factory reset",
+   "expected": [
+    28
+   ]
+  },
+  {
+   "id": 15,
+   "type": "topic",
+   "raw": "copy parameters to SD card",
+   "query": "NV media card SD card write parameters copy",
+   "expected": [
+    78,
+    77
+   ]
+  },
+  {
+   "id": 16,
+   "type": "topic",
+   "raw": "UL max ambient",
+   "query": "UL ambient temperature environment",
+   "expected": [
+    171
+   ]
+  },
+  {
+   "id": 17,
+   "type": "topic",
+   "raw": "what do the keypad buttons do",
+   "query": "keypad control buttons",
+   "expected": [
+    25
+   ]
+  },
+  {
+   "id": 18,
+   "type": "topic",
+   "raw": "which firmware is on my drive",
+   "query": "software version firmware drive",
+   "expected": [
+    53,
+    131,
+    32
+   ]
+  },
+  {
+   "id": 19,
+   "type": "vague",
+   "raw": "motor gets hot at low speed",
+   "query": "motor overheating thermal protection low speed",
+   "expected": [
+    70
+   ]
+  },
+  {
+   "id": 20,
+   "type": "vague",
+   "raw": "drive trips when I stop quickly",
+   "query": "overvoltage trip deceleration ramp stopping",
+   "expected": [
+    159,
+    44,
+    98,
+    99,
+    100
+   ]
+  }
+ ]
+}

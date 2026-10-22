@@ -1,0 +1,132 @@
+{
+ "manual": "Beckhoff AX8000 Operating instructions, version 2.3.1 (2026-04-22)",
+ "file": "ax8000.pdf",
+ "source": "Beckhoff download portal: AX8000 operating instructions (ax8000_ba_en.pdf), version 2.3.1",
+ "note": "query = agent rewrite; raw = user wording. expected = pages verified by reading the text. file = name under manuals/ (gitignored); baseline = minimum top-1 / top-3 that evaluate.py enforces.",
+ "baseline": {
+  "top1": 9,
+  "top3": 12
+ },
+ "cases": [
+  {
+   "id": 1,
+   "type": "topic",
+   "raw": "how hot can the cabinet be",
+   "query": "maximum ambient temperature operation environment",
+   "expected": [
+    41
+   ]
+  },
+  {
+   "id": 2,
+   "type": "topic",
+   "raw": "connect external braking resistor to AX8620",
+   "query": "external brake resistor connector AX8620",
+   "expected": [
+    102
+   ]
+  },
+  {
+   "id": 3,
+   "type": "topic",
+   "raw": "how long can my motor cables be in total",
+   "query": "total motor cable length maximum",
+   "expected": [
+    67,
+    70
+   ]
+  },
+  {
+   "id": 4,
+   "type": "topic",
+   "raw": "what do the symbols on the axis module display mean",
+   "query": "display symbols axis module meaning",
+   "expected": [
+    72,
+    73
+   ]
+  },
+  {
+   "id": 5,
+   "type": "topic",
+   "raw": "which fuses for UL",
+   "query": "UL compliant fuse holders fuse protection",
+   "expected": [
+    127,
+    128
+   ]
+  },
+  {
+   "id": 6,
+   "type": "vague",
+   "raw": "drive was in storage 2 years, what before switching on",
+   "query": "forming capacitors long-term storage",
+   "expected": [
+    81,
+    62,
+    131
+   ]
+  },
+  {
+   "id": 7,
+   "type": "topic",
+   "raw": "can I megger the drive",
+   "query": "insulation resistance measurement voltage test",
+   "expected": [
+    131
+   ]
+  },
+  {
+   "id": 8,
+   "type": "topic",
+   "raw": "can I run it on an IT grid",
+   "query": "IT network supply network",
+   "expected": [
+    119,
+    122
+   ]
+  },
+  {
+   "id": 9,
+   "type": "topic",
+   "raw": "where do I connect the motor brake",
+   "query": "holding brake connection connector",
+   "expected": [
+    113,
+    112
+   ]
+  },
+  {
+   "id": 10,
+   "type": "vague",
+   "raw": "will my RCD trip",
+   "query": "residual current circuit breaker leakage current RCD",
+   "expected": [
+    63,
+    116
+   ]
+  },
+  {
+   "id": 11,
+   "type": "topic",
+   "raw": "24V supply wiring",
+   "query": "24 V control voltage power supply connector",
+   "expected": [
+    98,
+    99
+   ]
+  },
+  {
+   "id": 12,
+   "type": "topic",
+   "raw": "decode the type code",
+   "query": "type key order code AX8108 meaning",
+   "expected": [
+    26,
+    22,
+    30,
+    32
+   ]
+  }
+ ]
+}
