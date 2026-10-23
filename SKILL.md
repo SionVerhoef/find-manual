@@ -8,8 +8,9 @@ description: "Finds the right manual and the right page for a question about a p
 Find the manual, find the page, read only that page, open the vendor's PDF at that spot.
 Answer only from what was read, with a citation and a confidence label.
 
-Scripts live in `scripts/` next to this file and need Python 3.9+ with `pypdfium2`.
-Every script prints one JSON object. A handled error comes back as
+Scripts live in `scripts/` next to this file and need Python 3.9+ with `pypdfium2`; run
+them with this machine's Python (`python3`, or `py -3` / `python` on Windows). Every
+script prints one JSON object. A handled error comes back as
 `{"error", "message", "fallback"}` with exit code 0: follow the `fallback`, do not stop.
 Details that do not fit here are in `reference/`.
 
@@ -88,7 +89,8 @@ and runs at the start of a lookup. "Keep this manual" → `scripts/cleanup.py pi
    `innerWidth` when it reads above 0; keep the default for a full browser window).
    Always a **new tab**: changing only the fragment of an open tab does nothing. Openers,
    in order, each tried once: the built-in browser pane → Claude in Chrome → the system
-   browser (`open` / `xdg-open` / `start`) → `page.py image` inline with the plain link.
+   browser (`open` / `xdg-open` / `cmd /c start "" "<url>"` on Windows; `env_check.py`
+   gives the command) → `page.py image` inline with the plain link.
    A pane that answers with a download instead of a page is not retried: next opener,
    and say in one line where the page opened. Each load downloads the PDF again, so one
    lookup opens the page once. A local file may open without its fragment: state the

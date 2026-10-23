@@ -9,6 +9,7 @@
 ~/.agents/skills is the open Agent Skills location read by Codex, Gemini CLI and Copilot.
 ~/.claude/skills is read by Claude Code, Copilot and Cursor; it gets a symlink to the
 installed folder, or a second copy on Windows, where symlinks need extra privileges.
+Run install.py again after updating the clone: both locations are copies then.
 Nothing outside those two folders is touched, and nothing is written to this repository.
 """
 import argparse

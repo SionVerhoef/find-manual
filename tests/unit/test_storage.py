@@ -1,18 +1,17 @@
-"""storage.py: where data lives, the sandbox fallbacks, settings merge, stable document ids."""
+"""storage.py: where data lives, the sandbox fallbacks, settings merge, stable document ids,
+JSON output on any console, and the retried replace for files another program holds open."""
 import contextlib
 import io
 import json
 import os
-import stat
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import storage  # noqa: E402
-
-ROOT_USER = hasattr(os, "geteuid") and os.geteuid() == 0   # root ignores read-only bits
 
 
 class Location(unittest.TestCase):
@@ -73,9 +72,10 @@ class Location(unittest.TestCase):
         self.assertEqual(storage.find_index(str(p)), p)
 
 
-@unittest.skipIf(ROOT_USER, "read-only folders do not stop root")
 class SandboxFallback(unittest.TestCase):
-    """A sandbox with a read-only home: data goes to the project's .find-manual/, then to a temp folder."""
+    """A sandbox with an unwritable home: data goes to the project's .find-manual/, then to a
+    temp folder. The blocker is a regular file where a folder is needed, so mkdir(parents=True)
+    fails on every OS; a read-only bit would stop neither Windows nor root."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -85,24 +85,22 @@ class SandboxFallback(unittest.TestCase):
         self.tempdir = base / "tmp"
         for d in (self.home, self.project, self.tempdir):
             d.mkdir()
+        self.blocker = self.home / "blocked"   # a file: nothing can be created below it
+        self.blocker.write_text("not a folder")
         self.saved_env = {k: os.environ.get(k) for k in
                           (storage.ENV_HOME, "HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "LOCALAPPDATA")}
         os.environ.pop(storage.ENV_HOME, None)
-        os.environ["HOME"] = str(self.home)
-        os.environ["XDG_DATA_HOME"] = str(self.home / ".local" / "share")
-        os.environ["XDG_CACHE_HOME"] = str(self.home / ".cache")
-        os.environ["LOCALAPPDATA"] = str(self.home / "AppData" / "Local")
+        os.environ["HOME"] = str(self.blocker)                                  # macOS: Path.home()
+        os.environ["XDG_DATA_HOME"] = str(self.blocker / ".local" / "share")    # Linux
+        os.environ["XDG_CACHE_HOME"] = str(self.blocker / ".cache")
+        os.environ["LOCALAPPDATA"] = str(self.blocker / "AppData" / "Local")    # Windows
         self.saved_cwd = os.getcwd()
         os.chdir(self.project)
         self.saved_tempdir = tempfile.tempdir
         tempfile.tempdir = str(self.tempdir)
-        self.home.chmod(stat.S_IRUSR | stat.S_IXUSR)   # read-only home
         storage.reset()
 
     def tearDown(self):
-        for d in (self.home, self.project, self.tempdir):
-            with contextlib.suppress(OSError):
-                d.chmod(stat.S_IRWXU)
         tempfile.tempdir = self.saved_tempdir
         os.chdir(self.saved_cwd)
         for k, v in self.saved_env.items():
@@ -113,6 +111,12 @@ class SandboxFallback(unittest.TestCase):
         storage.reset()
         self.tmp.cleanup()
 
+    def block_project(self):
+        (self.project / f".{storage.APP}").write_text("not a folder")
+
+    def block_temp(self):
+        tempfile.tempdir = str(self.blocker)
+
     def test_read_only_home_falls_back_to_the_project_folder(self):
         r = storage.resolve()
         self.assertEqual(r["source"], "project")
@@ -120,23 +124,23 @@ class SandboxFallback(unittest.TestCase):
         self.assertEqual(r["cache"], self.project / ".find-manual" / "cache")
         self.assertTrue((self.project / ".find-manual").is_dir())
         self.assertIn("home folder is not writable", r["notice"])
-        self.assertFalse(list(self.home.iterdir()))           # nothing was written to the home
+        self.assertEqual([p.name for p in self.home.iterdir()], ["blocked"])   # nothing was written to the home
 
     def test_unwritable_env_home_is_skipped(self):
-        os.environ[storage.ENV_HOME] = str(self.home / "find-manual")
+        os.environ[storage.ENV_HOME] = str(self.blocker / "find-manual")
         storage.reset()
         self.assertEqual(storage.resolve()["source"], "project")
 
     def test_read_only_project_falls_back_to_a_temp_folder(self):
-        self.project.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        self.block_project()
         r = storage.resolve()
         self.assertEqual(r["source"], "temp")
         self.assertEqual(r["data"].parent, self.tempdir)
         self.assertIn("this session only", r["notice"])
 
     def test_nothing_writable_is_a_handled_error(self):
-        self.project.chmod(stat.S_IRUSR | stat.S_IXUSR)
-        self.tempdir.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        self.block_project()
+        self.block_temp()
         out = io.StringIO()
         with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as cm:
             storage.resolve()
@@ -156,6 +160,98 @@ class SandboxFallback(unittest.TestCase):
         self.assertIn("notice", s)
         self.assertEqual(Path(s["config"]), self.project / ".find-manual" / "config.json")
         self.assertFalse(env_check.check(network=False)["first_run"])
+
+
+class Emit(unittest.TestCase):
+    """Every script prints one JSON object; a console that cannot show × or → must not break it."""
+    LINE = "asks when the second hit scores 0.85 × the first → 2–3 ≥ ok"
+
+    def test_non_ascii_survives_a_cp1252_console(self):
+        buf = io.BytesIO()
+        stream = io.TextIOWrapper(buf, encoding="cp1252", errors="strict", write_through=True)
+        with contextlib.redirect_stdout(stream):
+            storage.emit({"line": self.LINE})
+        stream.flush()
+        self.assertEqual(json.loads(buf.getvalue().decode("utf-8"))["line"], self.LINE)
+        stream.detach()
+
+    def test_a_stream_that_cannot_switch_encodings_gets_ascii_json(self):
+        class Plain:
+            encoding = "ascii"
+
+            def __init__(self):
+                self.parts = []
+
+            def write(self, s):
+                s.encode("ascii")      # strict, like a bare ASCII console
+                self.parts.append(s)
+
+            def flush(self):
+                pass
+        out = Plain()
+        with contextlib.redirect_stdout(out):
+            storage.emit({"line": self.LINE})
+        text = "".join(out.parts)
+        self.assertTrue(text.isascii())
+        self.assertEqual(json.loads(text)["line"], self.LINE)
+
+    def test_a_string_buffer_is_left_alone(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            storage.emit({"line": self.LINE})
+        self.assertEqual(json.loads(out.getvalue())["line"], self.LINE)
+
+    def test_pip_hint_names_this_interpreter(self):
+        hint = storage.pip_hint()
+        self.assertTrue(hint.endswith("-m pip install --user pypdfium2"))
+        self.assertIn(sys.executable, hint)
+        with mock.patch.object(sys, "executable", r"C:\Program Files\Python313\python.exe"):
+            self.assertTrue(storage.pip_hint().startswith('"C:\\Program Files\\Python313\\python.exe" -m pip'))
+
+
+class ReplaceFile(unittest.TestCase):
+    """os.replace onto a file another program holds open fails on Windows: retried, then InUse."""
+
+    def test_retries_while_the_target_is_busy(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = Path(d) / "src", Path(d) / "dst"
+            src.write_text("new")
+            dst.write_text("old")
+            real, calls = os.replace, []
+
+            def busy_twice(a, b):
+                calls.append(1)
+                if len(calls) <= 2:
+                    raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+                real(a, b)
+            with mock.patch.object(os, "replace", busy_twice), mock.patch.object(storage.time, "sleep") as sleep:
+                storage.replace_file(src, dst)
+            self.assertEqual(dst.read_text(), "new")
+            self.assertEqual((len(calls), sleep.call_count), (3, 2))
+
+    def test_gives_up_with_in_use_and_keeps_the_old_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = Path(d) / "src", Path(d) / "dst"
+            src.write_text("new")
+            dst.write_text("old")
+            with mock.patch.object(os, "replace", side_effect=PermissionError(13, "in use")) as rep, \
+                    mock.patch.object(storage.time, "sleep"):
+                with self.assertRaises(storage.InUse) as cm:
+                    storage.replace_file(src, dst, tries=3)
+            self.assertIsInstance(cm.exception, OSError)
+            self.assertIn(str(dst), str(cm.exception))
+            self.assertEqual(rep.call_count, 3)
+            self.assertEqual(dst.read_text(), "old")
+
+    def test_write_atomic_on_a_busy_target_keeps_the_old_file_and_no_temp(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "catalog.json"
+            storage.write_json(p, {"a": 1})
+            with mock.patch.object(os, "replace", side_effect=PermissionError(13, "in use")), \
+                    mock.patch.object(storage.time, "sleep"), self.assertRaises(storage.InUse):
+                storage.write_json(p, {"a": 2})
+            self.assertEqual(json.loads(p.read_text()), {"a": 1})
+            self.assertEqual([x.name for x in Path(d).iterdir()], ["catalog.json"])
 
 
 class DocId(unittest.TestCase):

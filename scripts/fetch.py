@@ -290,7 +290,7 @@ def pdf_front(pdf_path, n=FRONT_PAGES):
     """([(page, text)], metadata dict, page count) of the first n pages, read with pypdfium2."""
     if pdfium is None:
         raise Handled("no_pdf_lib", "pypdfium2 is not installed",
-                      "run: python3 -m pip install --user pypdfium2 — then retry; see reference/fallbacks.md")
+                      f"run: {storage.pip_hint()} — then retry; see reference/fallbacks.md")
     try:
         doc = pdfium.PdfDocument(str(pdf_path))
     except Exception as e:  # pdfium.PdfiumError, or an unreadable file
@@ -518,6 +518,7 @@ def firmware_hint(index_path):
     the software/firmware version, else a sentence that says where it is displayed."""
     if not index_path or not Path(index_path).exists():
         return None
+    db = None
     try:
         db = sqlite3.connect(f"file:{index_path}?mode=ro", uri=True)
         rows = db.execute(
@@ -541,10 +542,12 @@ def firmware_hint(index_path):
                 fallback = {"page": page, "label": labels.get(page, str(page)),
                             "text": shorten(text[start:start + 160], 100),
                             "note": "where the manual says the software version is shown"}
-        db.close()
         return fallback
     except sqlite3.Error:
         return None
+    finally:
+        if db is not None:
+            db.close()   # explicitly: a connection left to garbage collection keeps the index open on Windows
 
 
 # ---- catalog ----------------------------------------------------------------
@@ -737,7 +740,7 @@ def ensure_index(pdf, doc_id, url="", locked=False):
         return out, False
     if build_index.pdfium is None:
         raise Handled("no_pdf_lib", "pypdfium2 is not installed",
-                      "run: python3 -m pip install --user pypdfium2 — then retry; see reference/fallbacks.md")
+                      f"run: {storage.pip_hint()} — then retry; see reference/fallbacks.md")
 
     def _build():
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -751,7 +754,13 @@ def ensure_index(pdf, doc_id, url="", locked=False):
                 tmp.unlink()
             raise Handled("bad_pdf", f"{Path(pdf).name}: {e}",
                           "the file is not a readable PDF (encrypted or damaged): download it again or ask the user for another copy")
-        os.replace(tmp, out)
+        try:
+            storage.replace_file(tmp, out)   # retried: on Windows an index another process is reading cannot be replaced
+        except storage.InUse as e:
+            if tmp.exists():
+                tmp.unlink()
+            raise Handled("index_in_use", str(e),
+                          "the index is in use by another program; wait a moment and run the command again")
     if locked:
         _build()
     else:
@@ -821,7 +830,11 @@ def acquire(url=None, path=None, force=False, now=None):
             info = download(url, tmp)
             doc_id = storage.doc_id_for(tmp)
             dest = storage.pdf_path(doc_id)
-            os.replace(tmp, dest)
+            try:
+                storage.replace_file(tmp, dest)   # retried: on Windows a PDF open in a viewer cannot be replaced
+            except storage.InUse as e:
+                raise Handled("file_in_use", str(e),
+                              "the PDF working copy is open in another program (a viewer?); close it and run the command again")
         finally:
             if tmp.exists():
                 tmp.unlink()

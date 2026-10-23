@@ -12,6 +12,7 @@ notice says so: tell the user once.
 is sent).
 """
 import argparse
+import os
 import platform
 import shutil
 import socket
@@ -70,12 +71,23 @@ def network_available(timeout=2.0):
         return False
 
 
-def browser_hint():
-    cmd = "open" if sys.platform == "darwin" else "start" if sys.platform.startswith("win") else "xdg-open"
-    present = True if cmd == "start" else shutil.which(cmd) is not None
-    return {"open_command": cmd if present else None,
+# (executable that must be present, the command to run) per platform. On Windows `start`
+# is a cmd built-in whose first quoted argument is a window title, so the empty "" is what
+# makes it open the URL; `cmd /c` makes the same line work from PowerShell and from cmd.
+OPEN_COMMANDS = {"darwin": ("open", "open <url>"),
+                 "win": ("cmd", 'cmd /c start "" "<url>"'),
+                 "linux": ("xdg-open", "xdg-open <url>")}
+
+
+def browser_hint(platform=None):
+    """How to open a link in the system browser when the session has no browser tool."""
+    platform = platform or ("win" if os.name == "nt" else sys.platform)
+    key = "darwin" if platform == "darwin" else "win" if platform.startswith("win") else "linux"
+    exe, command = OPEN_COMMANDS[key]
+    present = shutil.which(exe) is not None
+    return {"open_command": command if present else None,
             "hint": ("open the link with the agent's browser tool in a NEW tab; without one, run "
-                     f"`{cmd} <url>`; without any browser, show scripts/page.py image and the plain link")}
+                     f"`{command}`; without any browser, show scripts/page.py image and the plain link")}
 
 
 def folder_mb(path):
@@ -95,10 +107,10 @@ def check(network=True):
     lib = pdf_library()
     if lib is None:
         problems.append({"problem": "no PDF library (pypdfium2, pypdf or pdftotext)",
-                         "fallback": "run: python3 -m pip install --user pypdfium2 — then retry"})
+                         "fallback": f"run: {storage.pip_hint()} — then retry"})
     elif lib["name"] != "pypdfium2":
         problems.append({"problem": f"pypdfium2 is not installed; only {lib['name']} is present",
-                         "fallback": "run: python3 -m pip install --user pypdfium2 — build_index.py and page images need it"})
+                         "fallback": f"run: {storage.pip_hint()} — build_index.py and page images need it"})
     fts5 = fts5_available()
     if not fts5:
         problems.append({"problem": "this Python's SQLite has no FTS5",

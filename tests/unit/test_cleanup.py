@@ -1,4 +1,5 @@
-"""cleanup.py: retention, the size cap, pins, and that only the skill's own files go."""
+"""cleanup.py: retention, the size cap, pins, that only the skill's own files go, and that a
+file another program holds open (Windows) is skipped, never a crash."""
 import json
 import os
 import sys
@@ -6,6 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import cleanup  # noqa: E402
@@ -151,16 +153,64 @@ class Cleanup(unittest.TestCase):
         sub = storage.index_dir() / "sub"
         sub.mkdir()
         self.make(sub, f"{A}.sqlite", 1000 * D)
-        link = storage.pdf_dir() / f"{B}.pdf"
-        target = Path(self.tmp.name) / "precious.pdf"
-        target.write_bytes(b"keep me")
-        link.symlink_to(target)
-        os.utime(target, (self.now - 1000 * D, self.now - 1000 * D))
         r = cleanup.run(now=self.now)
         self.assertEqual(r["removed"], [])
         for p in strangers:
             self.assertTrue(p.exists(), p)
+
+    def test_a_symlink_in_the_cache_is_never_followed(self):
+        link = storage.pdf_dir() / f"{B}.pdf"
+        target = Path(self.tmp.name) / "precious.pdf"
+        target.write_bytes(b"keep me")
+        try:
+            link.symlink_to(target)
+        except OSError:                      # Windows without the symlink privilege
+            self.skipTest("symlinks need a privilege here")
+        os.utime(target, (self.now - 1000 * D, self.now - 1000 * D))
+        r = cleanup.run(now=self.now)
+        self.assertEqual(r["removed"], [])
         self.assertTrue(target.exists() and link.is_symlink())
+
+    # ---- a file another program holds open (Windows) -------------------------------
+    def busy(self, *names):
+        """Patch Path.unlink to fail for `names` the way Windows does for an open file."""
+        real = Path.unlink
+
+        def unlink(path, *a, **k):
+            if path.name in names:
+                raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+            return real(path, *a, **k)
+        return mock.patch.object(Path, "unlink", unlink)
+
+    def test_a_file_in_use_is_skipped_and_the_rest_still_goes(self):
+        busy = self.make(storage.pdf_dir(), f"{A}.pdf", 100 * H)
+        other = self.make(storage.pdf_dir(), f"{B}.pdf", 100 * H)
+        with self.busy(busy.name):
+            r = cleanup.run(now=self.now)
+        self.assertTrue(busy.exists())
+        self.assertFalse(other.exists())
+        self.assertEqual(self.removed(r), [("pdf", other.name)])
+        self.assertEqual([(x["kind"], x["name"]) for x in r["skipped"]], [("pdf", busy.name)])
+        self.assertIn("in use", r["skipped"][0]["why"])
+        self.assertEqual(r["remaining"]["pdf"]["count"], 1)      # it still counts as cache
+        self.assertEqual(r["freed_mb"], round(1024 / 1e6, 2))
+
+    def test_the_size_cap_moves_on_past_a_busy_file(self):
+        self.config(max_cache_mb=0.0015)                          # 1.5 KB; two 1 KB PDFs
+        busy = self.make(storage.pdf_dir(), f"{A}.pdf", 10 * H)   # oldest-used: first in line
+        other = self.make(storage.pdf_dir(), f"{B}.pdf", 1 * H)
+        with self.busy(busy.name):
+            r = cleanup.run(now=self.now)
+        self.assertTrue(busy.exists())
+        self.assertFalse(other.exists())
+        self.assertEqual([x["name"] for x in r["skipped"]], [busy.name])
+        self.assertEqual([x["name"] for x in r["removed"]], [other.name])
+        self.assertEqual(r["remaining"]["pdf"]["count"], 1)          # the busy file still counts as cache
+
+    def test_nothing_is_skipped_on_a_normal_run(self):
+        self.make(storage.pdf_dir(), f"{A}.pdf", 100 * H)
+        r = cleanup.run(now=self.now)
+        self.assertEqual(r["skipped"], [])
 
     def test_leftover_temp_files_go_after_an_hour(self):
         fresh = self.make(storage.index_dir(), f".{A}.sqlite.123.tmp", 10 * 60)
@@ -173,17 +223,18 @@ class Cleanup(unittest.TestCase):
         pdf = self.make(storage.pdf_dir(), f"{A}.pdf", 1000 * H)
         with storage.lock():
             r = cleanup.run(now=self.now, lock_timeout=0.2)
-        self.assertIn("skipped", r)
+        self.assertIn("locked", r)
+        self.assertEqual((r["removed"], r["skipped"]), ([], []))
         self.assertTrue(pdf.exists())
 
     def test_cli_pin_and_run(self):
         import subprocess
         script = Path(__file__).resolve().parents[2] / "scripts" / "cleanup.py"
-        out = json.loads(subprocess.check_output([sys.executable, str(script), "pin", A, "--note", "n"], text=True))
+        out = json.loads(subprocess.check_output([sys.executable, str(script), "pin", A, "--note", "n"], encoding="utf-8"))
         self.assertEqual(out["pins"], [A])
-        out = json.loads(subprocess.check_output([sys.executable, str(script)], text=True))
+        out = json.loads(subprocess.check_output([sys.executable, str(script)], encoding="utf-8"))
         self.assertEqual(out["pinned"], [A])
-        out = json.loads(subprocess.check_output([sys.executable, str(script), "status"], text=True))
+        out = json.loads(subprocess.check_output([sys.executable, str(script), "status"], encoding="utf-8"))
         self.assertTrue(out["dry_run"])
 
 

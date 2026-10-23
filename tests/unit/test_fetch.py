@@ -6,6 +6,7 @@ import email.message
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -73,6 +74,25 @@ def make_pdf(pages, title=None):
 MANUAL = make_pdf([TITLE, FRONT, PARAMS], title="Widgetron W200-W300 Control UG Issue 1.book")
 MANUAL_V2 = make_pdf([TITLE[:-1] + ["Issue: 3"], FRONT, PARAMS], title="Widgetron W200-W300 Control UG Issue 1.book")
 OTHER_PDF = make_pdf([OTHER])
+
+
+@contextlib.contextmanager
+def every_connection_closed(testcase):
+    """Every SQLite connection opened inside the block must be closed when it ends. Left to
+    garbage collection, a connection keeps the index file open on Windows (seen on Python
+    3.15), and an open index cannot be rebuilt or cleaned up."""
+    real, opened = sqlite3.connect, []
+
+    def connect(*a, **k):
+        db = real(*a, **k)
+        opened.append(db)
+        return db
+    with mock.patch.object(sqlite3, "connect", connect):
+        yield opened
+    testcase.assertTrue(opened, "nothing opened an index")
+    for db in opened:
+        with testcase.assertRaises(sqlite3.ProgrammingError, msg="an index connection was left open"):
+            db.execute("SELECT 1")
 
 
 # ---- fake HTTP --------------------------------------------------------------
@@ -405,9 +425,9 @@ class WebSearch(Home):
         self.assertTrue(r["queries"][0].startswith("site:widgets.example Widgetron W200 parameter reference guide"))
 
     def test_cli_prints_one_json_object(self):
-        out = subprocess.check_output([sys.executable, str(SCRIPT), "resolve", "--model", "Widgetron W200"], text=True)
+        out = subprocess.check_output([sys.executable, str(SCRIPT), "resolve", "--model", "Widgetron W200"], encoding="utf-8")
         self.assertEqual(json.loads(out)["next"], "web_search")
-        p = subprocess.run([sys.executable, str(SCRIPT), "get"], capture_output=True, text=True)
+        p = subprocess.run([sys.executable, str(SCRIPT), "get"], capture_output=True, encoding="utf-8")
         self.assertNotEqual(p.returncode, 0)   # argparse: --url or --path is required
 
 
@@ -469,6 +489,17 @@ class Get(Home):
         super().setUp()
         self.http.serve(self.CLEAN, MANUAL, etag='"v2"', last_modified="Tue, 01 Oct 2019 10:00:00 GMT")
 
+    def test_every_index_connection_is_closed_again(self):
+        with every_connection_closed(self):
+            r = fetch.get(url=self.URL, model="Widgetron W200")           # download, build, verify, hint
+            self.assertEqual(r["firmware_hint"]["page"], 3)                 # the early-return path
+            fetch.get(url=self.URL, model="Widgetron W200")               # cached: read_meta, index_front
+            fetch.resolve("Widgetron W200")                                 # the catalog route
+        with every_connection_closed(self):
+            self.assertIsNone(fetch.firmware_hint(storage.index_path(r["doc_id"]).with_suffix(".missing")))
+            (Path(self.tmp.name) / "not-an-index.sqlite").write_bytes(b"not sqlite")
+            self.assertIsNone(fetch.firmware_hint(Path(self.tmp.name) / "not-an-index.sqlite"))
+
     def test_download_hash_index_and_catalog(self):
         r = fetch.get(url=self.URL, model="Widgetron W200")
         doc_id = r["doc_id"]
@@ -489,6 +520,7 @@ class Get(Home):
         self.assertEqual(r["cleanup"]["removed"], 0)
         import page
         db, meta, _ = storage.open_index(doc_id)
+        db.close()                                                         # an open index blocks the temp folder's removal on Windows
         self.assertEqual(meta["source_url"], self.CLEAN)                   # what page.py link opens
         self.assertTrue(page.source_url(meta).startswith(self.CLEAN))
 
@@ -539,7 +571,7 @@ class Get(Home):
         e = self.catalog()[r["doc_id"]]
         self.assertEqual((e["path"], e.get("url")), (str(p.resolve()), None))
         self.assertEqual(self.http.calls, [])
-        out = json.loads(subprocess.check_output([sys.executable, str(SCRIPT), "get", "--path", str(p)], text=True))
+        out = json.loads(subprocess.check_output([sys.executable, str(SCRIPT), "get", "--path", str(p)], encoding="utf-8"))
         self.assertTrue(out["cached"])
 
     def test_resolve_with_a_link_verifies_catalogs_and_is_found_next_time(self):
@@ -598,7 +630,7 @@ class DownloadErrors(Home):
 
     def test_the_cli_prints_the_handled_error_with_exit_code_0(self):
         p = subprocess.run([sys.executable, str(SCRIPT), "get", "--path", str(Path(self.tmp.name) / "nope.pdf")],
-                           capture_output=True, text=True)
+                           capture_output=True, encoding="utf-8")
         self.assertEqual(p.returncode, 0)
         self.assertEqual(json.loads(p.stdout)["error"], "no_file")
 

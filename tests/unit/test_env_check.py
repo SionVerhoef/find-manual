@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -43,8 +44,19 @@ class EnvCheck(unittest.TestCase):
         self.assertIn("NEW tab", r["browser"]["hint"])
 
     def test_cli_prints_one_json_object(self):
-        out = subprocess.check_output([sys.executable, str(SCRIPTS / "env_check.py"), "--no-network"], text=True)
+        out = subprocess.check_output([sys.executable, str(SCRIPTS / "env_check.py"), "--no-network"], encoding="utf-8")
         self.assertEqual(json.loads(out)["data_dir"], self.tmp.name)
+
+    def test_system_browser_command_per_platform(self):
+        with mock.patch.object(env_check.shutil, "which", lambda exe: f"/bin/{exe}"):
+            self.assertEqual(env_check.browser_hint("darwin")["open_command"], "open <url>")
+            self.assertEqual(env_check.browser_hint("linux")["open_command"], "xdg-open <url>")
+            win = env_check.browser_hint("win32")
+        self.assertEqual(win["open_command"], 'cmd /c start "" "<url>"')   # the empty title argument matters
+        self.assertIn('`cmd /c start "" "<url>"`', win["hint"])
+        with mock.patch.object(env_check.shutil, "which", lambda exe: None):
+            self.assertIsNone(env_check.browser_hint("linux")["open_command"])
+        self.assertIn(env_check.browser_hint()["open_command"] or "", [c for _, c in env_check.OPEN_COMMANDS.values()] + [""])
 
 
 class Setup(EnvCheck):
@@ -85,7 +97,7 @@ class Setup(EnvCheck):
 
     def test_cli(self):
         out = subprocess.check_output([sys.executable, str(SCRIPTS / "setup.py"), "--no-network",
-                                       "--supplier", "https://docs.vendor.example"], text=True)
+                                       "--supplier", "https://docs.vendor.example"], encoding="utf-8")
         self.assertEqual(json.loads(out)["added"]["suppliers"], ["https://docs.vendor.example"])
 
 

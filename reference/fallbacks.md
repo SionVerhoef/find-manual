@@ -12,7 +12,7 @@ names the next route below.
 | Home folder not writable (sandbox) | Project `.find-manual/` (gitignored) → temp folder for this session only. `env_check.py` and `setup.py` return a `notice` saying which and how to allow the home folder: tell the user once. |
 | No network | `fetch.py` returns `no_network`: use the local manuals folder (`settings.py add manuals_dirs`), the cached index (a cached URL is served without its daily check), or a PDF the user attaches (`fetch.py get --path`). |
 | Download blocked (403, bot check, a web page instead of the PDF) | `fetch.py` returns `download_blocked` or `not_a_pdf`: fetch the link with the agent's own web fetch tool and save the PDF → ask the user to download it and give the path → `fetch.py get --path <file>`. |
-| No browser tool | OS `open` / `xdg-open` / `start` → page image inline (`page.py image`) → plain link. |
+| No browser tool | OS `open` / `xdg-open` / `cmd /c start "" "<url>"` (Windows; `env_check.py` gives the command) → page image inline (`page.py image`) → plain link. |
 | PDF has no bookmarks | Headings detected from font size and the printed contents pages (done at build time). |
 | Scanned PDF (no text layer) | Page image to the agent; OCR only with the user's permission. |
 | Index corrupt or schema outdated | Rebuild (`build_index.py`), automatically. |
@@ -27,5 +27,5 @@ names the next route below.
 | The search finds only the HTML edition of the manual | The PDF usually sits on the vendor's download host: fetch that page for its PDF link, or try the vendor's download centre; `resolve --url` verifies whatever is tried. |
 | Two copies of the same manual (another host, mirror or file) | `resolve` keeps one (best label, the `--vendor` host, newest date, most recently used) and lists the others under `duplicates`: one manual, no question to the user. |
 | The hit is a long table block, or a caption below its table | `page.py context … --find <ID>` starts at the ID; read the neighbouring page when the table continues there. |
-| The browser pane answers with a download instead of a page | Do not retry the URL there. Next opener, each once: Claude in Chrome (new tab) → system browser (`open` / `xdg-open` / `start`) → `page.py image` inline with the plain link. Order and tests in `reference/hosts.md`. |
+| The browser pane answers with a download instead of a page | Do not retry the URL there. Next opener, each once: Claude in Chrome (new tab) → system browser (`open` / `xdg-open` / `cmd /c start "" "<url>"`) → `page.py image` inline with the plain link. Order and tests in `reference/hosts.md`. |
 | A local file opens without its fragment | State the printed page label and section in the answer. |

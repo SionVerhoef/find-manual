@@ -8,7 +8,7 @@ vendor's own URL (or the local `file://` path); never a copy served by the skill
 | Claude Code desktop (first target) | Browser pane, then Claude in Chrome, then the system browser, then the page image | In that order; see *Opener order* below |
 | Claude app with a browser | Built-in browser or Claude in Chrome | Same order |
 | Codex app | In-app browser (public pages only) | Browser tool: new tab |
-| CLIs (Claude Code, Codex, Gemini, Copilot), Cursor | System browser | `open` (macOS) / `xdg-open` (Linux) / `start` (Windows) with the link |
+| CLIs (Claude Code, Codex, Gemini, Copilot), Cursor | System browser | `open` (macOS) / `xdg-open` (Linux) / `cmd /c start "" "<url>"` (Windows) with the link; `env_check.py` reports the one for this machine as `browser.open_command` |
 | No browser available | Inline | `page.py image` → show the PNG, plus the plain link |
 
 ## Opener order (Claude Code desktop and the Claude app)
@@ -26,8 +26,12 @@ to look elsewhere.
    2026: the C200 guide opened at page 158, 134 %, with the hit in view; a vendor redirect
    kept the fragment). Leave the tab open for the user. Extension not connected, or the
    site declined: next opener.
-3. **System browser**: `open` (macOS) / `xdg-open` (Linux) / `start` (Windows) with the
-   link. Displays the PDF at the fragment, outside the app.
+3. **System browser**: `open <url>` (macOS) / `xdg-open <url>` (Linux) /
+   `cmd /c start "" "<url>"` (Windows) with the link. Displays the PDF at the fragment,
+   outside the app. On Windows `start` is a cmd built-in whose first quoted argument is a
+   window title: without the empty `""` it takes the URL for the title and opens nothing;
+   `cmd /c` makes the same line work from PowerShell and from cmd. Keep the URL in double
+   quotes (it holds `&` and `#`).
 4. **Page image inline**: `page.py image <doc_id> <page>`, shown with the plain link.
 
 `--pane-width`: pass the pane's `innerWidth` when it reads above 0. For Chrome or the

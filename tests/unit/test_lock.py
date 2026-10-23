@@ -61,6 +61,15 @@ class Lock(Isolated):
             pass
         self.assertLess(time.monotonic() - t0, 2)
 
+    def test_process_liveness_is_told_on_this_os(self):
+        """POSIX asks with signal 0; Windows opens the process and reads its exit code."""
+        self.assertTrue(storage._pid_alive(os.getpid()))
+        dead = subprocess.Popen([sys.executable, "-c", "pass"])
+        dead.wait()
+        self.assertIs(storage._pid_alive(dead.pid), False)
+        self.assertIsNone(storage._pid_alive(None))
+        self.assertIsNone(storage._pid_alive(0))
+
     def test_old_lock_is_broken_even_if_the_pid_lives(self):
         path = storage.data_dir() / ".lock"
         path.write_text(json.dumps({"pid": os.getpid(), "time": 0}))

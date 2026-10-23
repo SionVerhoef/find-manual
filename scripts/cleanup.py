@@ -14,7 +14,10 @@ older than vendor_map_days. Above max_cache_mb, PDFs go first, then indexes, old
 first. Pinned manuals stay whatever their age or size. "Unused" is the file's mtime,
 which every search and read bumps. Only files in the skill's own layout are touched:
 index/<doc_id>.sqlite, pdf/<doc_id>.pdf, img/<doc_id>-p<N>.png, vendors/*.json, entries
-of catalog.json, and leftover temp files older than an hour.
+of catalog.json, and leftover temp files older than an hour. A file that cannot be
+deleted because another program has it open (Windows) is listed under `skipped` and
+tried again next run; nothing crashes. `locked` means another find-manual tool held the
+write lock and this run did nothing.
 """
 import argparse
 import re
@@ -85,15 +88,28 @@ def run(dry_run=False, now=None, lock_timeout=10):
     ret = s.get("retention", {})
     cap_mb = float(s.get("max_cache_mb") or 0)
     pinned = storage.pins()
-    removed, freed = [], 0.0
+    removed, skipped, freed = [], [], 0.0
 
     def remove(path, kind, doc_id=None, why=""):
+        """True when the file is gone (or would be, in a dry run). A file another program
+        has open cannot be deleted on Windows: it is skipped, reported, and tried next run."""
         nonlocal freed
-        mb = path.stat().st_size / 1e6 if path.exists() else 0
+        try:
+            mb = path.stat().st_size / 1e6
+        except OSError:
+            mb = 0
         if not dry_run:
-            path.unlink()
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            except PermissionError as e:
+                skipped.append({"kind": kind, "doc_id": doc_id, "name": path.name, "mb": round(mb, 2),
+                                "why": f"in use by another program or not writable ({e.strerror or e})"})
+                return False
         freed += mb
         removed.append({"kind": kind, "doc_id": doc_id, "name": path.name, "mb": round(mb, 2), "why": why})
+        return True
 
     try:
         with storage.lock(timeout=lock_timeout, busy="raise"):
@@ -107,7 +123,8 @@ def run(dry_run=False, now=None, lock_timeout=10):
                 if it["doc_id"] in pinned:
                     keep.append(it)
                 elif it["unused_s"] > limits[it["kind"]]:
-                    remove(it["path"], it["kind"], it["doc_id"], f"unused for {human(it['unused_s'])}")
+                    if not remove(it["path"], it["kind"], it["doc_id"], f"unused for {human(it['unused_s'])}"):
+                        keep.append(it)
                 else:
                     keep.append(it)
             # 2. size cap: PDFs and images first, then indexes; oldest-used first; pinned stay
@@ -119,9 +136,9 @@ def run(dry_run=False, now=None, lock_timeout=10):
                         break
                     if it["doc_id"] in pinned:
                         continue
-                    remove(it["path"], it["kind"], it["doc_id"], f"cache above {cap_mb:g} MB")
-                    keep.remove(it)
-                    total -= it["mb"]
+                    if remove(it["path"], it["kind"], it["doc_id"], f"cache above {cap_mb:g} MB"):
+                        keep.remove(it)
+                        total -= it["mb"]
             # 3. catalog entries
             cat = storage.read_json(storage.catalog_path())
             manuals = cat.get("manuals", {}) if isinstance(cat, dict) else {}
@@ -155,7 +172,7 @@ def run(dry_run=False, now=None, lock_timeout=10):
             for p in stale_tmp(now):
                 remove(p, "tmp", None, "leftover temp file")
     except storage.Locked as e:
-        return {"skipped": str(e), "removed": [], "freed_mb": 0}
+        return {"locked": str(e), "removed": [], "skipped": [], "freed_mb": 0}
 
     remaining = {}
     for kind in ("pdf", "index", "img"):
@@ -165,7 +182,7 @@ def run(dry_run=False, now=None, lock_timeout=10):
     remaining["max_cache_mb"] = cap_mb
     remaining["catalog_entries"] = len(manuals) - (len(dropped) if dry_run else 0)
     remaining["vendor_maps"] = vmaps
-    return {"dry_run": dry_run, "removed": removed, "freed_mb": round(freed, 2),
+    return {"dry_run": dry_run, "removed": removed, "skipped": skipped, "freed_mb": round(freed, 2),
             "remaining": remaining, "pinned": sorted(pinned),
             "retention": {"pdf_hours": ret.get("pdf_hours"), "index_days": ret.get("index_days"),
                           "catalog_days": ret.get("catalog_days"), "vendor_map_days": ret.get("vendor_map_days")}}

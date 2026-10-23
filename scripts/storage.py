@@ -43,8 +43,28 @@ LOCK_STALE = 600.0         # a lock older than this whose process is gone is bro
 
 # ---- output -----------------------------------------------------------------
 def emit(obj):
-    """Every script prints exactly one JSON object."""
-    print(json.dumps(obj, indent=1, ensure_ascii=False))
+    """Every script prints exactly one JSON object, as UTF-8 whatever the console's code
+    page: a Windows pipe defaults to cp1252, which cannot encode ×, → or ≥. A stream that
+    cannot be switched gets ASCII-escaped JSON instead, which reads back the same."""
+    text = json.dumps(obj, indent=1, ensure_ascii=False)
+    out = sys.stdout
+    enc = (getattr(out, "encoding", None) or "").lower().replace("-", "").replace("_", "")
+    if enc and enc not in ("utf8", "cp65001") and hasattr(out, "reconfigure"):
+        with contextlib.suppress(Exception):
+            out.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        print(text, file=out)
+    except UnicodeEncodeError:
+        print(json.dumps(obj, indent=1, ensure_ascii=True), file=out)
+
+
+def pip_hint(package="pypdfium2"):
+    """The install command for this very interpreter. `python3` is not on PATH on most
+    Windows machines, and a package installed into another Python would not help."""
+    exe = sys.executable or "python3"
+    if " " in exe:
+        exe = f'"{exe}"'
+    return f"{exe} -m pip install --user {package}"
 
 
 def fail(error, message, fallback):
@@ -208,6 +228,31 @@ def settings() -> dict:
 
 
 # ---- safe writes ------------------------------------------------------------
+REPLACE_TRIES = 8          # os.replace onto a file another program has open fails on Windows:
+REPLACE_WAIT = 0.25        # retried this many times, this many seconds apart, before giving up
+
+
+class InUse(OSError):
+    """The target file is open in another program (Windows) or not writable."""
+
+
+def replace_file(src, dst, tries=REPLACE_TRIES, wait=REPLACE_WAIT):
+    """os.replace that waits out a reader. On Windows a file that another process has open
+    (an index being searched, a PDF in a viewer) cannot be replaced or deleted, and the
+    write lock does not cover readers; a few short retries outlast a search or a page read.
+    Raises InUse when the target stays busy, so callers can report a handled error."""
+    last = None
+    for attempt in range(tries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError as e:
+            last = e
+            if attempt < tries - 1:
+                time.sleep(wait)
+    raise InUse(f"{dst} is open in another program or not writable ({last.strerror or last})") from last
+
+
 def write_atomic(path, data):
     """Write bytes or text to `path` through a temp file in the same folder + os.replace,
     so a reader never sees a half-written file and a crash leaves the old one intact."""
@@ -219,7 +264,7 @@ def write_atomic(path, data):
             tmp.write_text(data, encoding="utf-8")
         else:
             tmp.write_bytes(data)
-        os.replace(tmp, path)
+        replace_file(tmp, path)
     finally:
         if tmp.exists():
             tmp.unlink()
@@ -234,6 +279,49 @@ class Locked(Exception):
     """Another find-manual process holds the write lock."""
 
 
+def _pid_alive_windows(pid):
+    """Windows has no signal 0: open the process for a query and read its exit code."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        PROCESS_QUERY_LIMITED_INFORMATION, STILL_ACTIVE, ERROR_INVALID_PARAMETER = 0x1000, 259, 87
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # no such process → invalid parameter; access denied → it exists, another user's
+            return False if ctypes.get_last_error() == ERROR_INVALID_PARAMETER else None
+        try:
+            code = wintypes.DWORD()
+            if k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return code.value == STILL_ACTIVE   # a finished process whose handle is still held
+            return None
+        finally:
+            k32.CloseHandle(handle)
+    except Exception:
+        return None
+
+
+def _pid_alive(pid):
+    """True or False when the OS can tell, None when it cannot (another user's process)."""
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    if os.name == "nt":
+        return _pid_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True           # alive, another user
+    except OSError:
+        return None
+    return True
+
+
 def _lock_stale(path: Path) -> bool:
     try:
         age = time.time() - path.stat().st_mtime
@@ -241,15 +329,9 @@ def _lock_stale(path: Path) -> bool:
         return False          # gone already
     if age > LOCK_STALE:
         return True
-    info = read_json(path)
-    pid = info.get("pid")
-    if os.name != "nt" and isinstance(pid, int) and pid != os.getpid():
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True       # the holder died without unlinking
-        except PermissionError:
-            return False      # alive, another user
+    pid = read_json(path).get("pid")
+    if isinstance(pid, int) and pid != os.getpid() and _pid_alive(pid) is False:
+        return True           # the holder died without unlinking
     return False
 
 

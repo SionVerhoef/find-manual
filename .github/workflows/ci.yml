@@ -7,20 +7,67 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.x"]   # the oldest supported and the current release
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # The only dependency. Without it the fetch, index-build and page tests skip.
+      - name: install pypdfium2
+        run: python -m pip install --upgrade pip pypdfium2
+
+      # Keep the tests off the runner's real data folders, in this OS's own path form.
+      - name: scratch data folder
+        shell: bash
+        run: python -c "import os, pathlib; print('FIND_MANUAL_HOME=' + str(pathlib.Path(os.environ['RUNNER_TEMP']) / 'find-manual'))" >> "$GITHUB_ENV"
+
       # The frontmatter is what decides whether the skill loads and triggers at all.
       - name: SKILL.md frontmatter is valid
-        run: python3 scripts/check_skill.py
+        run: python scripts/check_skill.py
 
-      # Pure-Python checks: patterns, link building, storage. No PDFs, no pypdfium2.
+      # No PDFs, no network: storage, lock, atomic writes, settings, cleanup, env check,
+      # link building, patterns, install, and fetch/index/page against generated PDFs.
       - name: unit tests
-        run: python3 -m unittest discover -s tests/unit -v
-        env:
-          FIND_MANUAL_HOME: ${{ runner.temp }}/find-manual
+        run: python -m unittest discover -s tests/unit -v
+
+      # install.py against the runner's real (disposable) home: the folders appear with
+      # the installed JSON saying ok, and go away again on --uninstall.
+      - name: install smoke test
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import json, subprocess, sys
+          from pathlib import Path
+          home = Path.home()
+          agents = home / ".agents" / "skills" / "find-manual"
+          claude = home / ".claude" / "skills" / "find-manual"
+          r = json.loads(subprocess.check_output([sys.executable, "install.py"], encoding="utf-8"))
+          print(json.dumps(r, indent=1))
+          assert r["ok"] is True, r
+          for root in (agents, claude):
+              for name in ("SKILL.md", "defaults.json", "scripts/search.py", "reference/hosts.md"):
+                  assert (root / name).is_file(), f"{root / name} missing after install"
+          r = json.loads(subprocess.check_output([sys.executable, "install.py", "--uninstall"], encoding="utf-8"))
+          print(json.dumps(r, indent=1))
+          for p in (agents, claude):
+              assert not p.exists() and not p.is_symlink(), f"{p} still there after uninstall"
+          print("install smoke test ok on", sys.platform)
+          EOF
+
+  no-pdfs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       # Manuals are copyrighted and must never land here (see CLAUDE.md).
       - name: no PDFs committed

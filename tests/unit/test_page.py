@@ -99,7 +99,16 @@ class Context(unittest.TestCase):
         from page import page_row
         from search import Index
         self.assertEqual(page_row(self.db, 2)[0], "2")
-        self.assertEqual(Index(str(self.index)).labels[1], "1")
+        with Index(str(self.index)) as idx:
+            self.assertEqual(idx.labels[1], "1")
+
+    def test_the_index_closes_its_connection(self):
+        """Left to garbage collection, an open connection keeps the file busy on Windows."""
+        from search import Index
+        idx = Index(str(self.index))
+        idx.close()
+        with self.assertRaises(sqlite3.ProgrammingError):
+            idx.db.execute("SELECT 1")
 
     def test_hit_by_y_then_x_and_the_sibling_column_comes_along(self):
         from page import context
@@ -130,7 +139,8 @@ class Context(unittest.TestCase):
 
     def test_search_hits_carry_x(self):
         from search import Index
-        r = Index(str(self.index)).search("minimum cross section grounding")
+        with Index(str(self.index)) as idx:
+            r = idx.search("minimum cross section grounding")
         self.assertTrue(r["hits"])
         rx, ry = self.block(1, "Minimum cross section")
         self.assertEqual((r["hits"][0]["x"], r["hits"][0]["y"]), (rx, ry))

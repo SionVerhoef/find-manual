@@ -143,7 +143,7 @@ def image(meta, page, scale=1.5):
         import pypdfium2 as pdfium
     except ImportError:
         storage.fail("no_pdf_lib", "pypdfium2 is not installed",
-                     "run: python3 -m pip install --user pypdfium2 — then retry; see reference/fallbacks.md")
+                     f"run: {storage.pip_hint()} — then retry; see reference/fallbacks.md")
     src = meta.get("source_path", "")
     if not src or not Path(src).exists():
         storage.fail("no_pdf", "the PDF working copy is gone",
@@ -151,12 +151,15 @@ def image(meta, page, scale=1.5):
     if Path(src).resolve().parent == storage.pdf_dir().resolve():
         storage.mark_used(src)   # a private working copy: keep it from cleanup a while longer
     pdf = pdfium.PdfDocument(src)
-    if not 1 <= page <= len(pdf):
-        storage.fail("no_page", f"page {page} is not in the PDF ({len(pdf)} pages)",
-                     "use the physical page number from the search hit (1-based)")
-    bitmap = pdf[page - 1].render(scale=scale, rev_byteorder=True)  # RGB(A/x) byte order
-    n, stride, w, h = bitmap.n_channels, bitmap.stride, bitmap.width, bitmap.height
-    buf = bytes(bitmap.buffer)
+    try:
+        if not 1 <= page <= len(pdf):
+            storage.fail("no_page", f"page {page} is not in the PDF ({len(pdf)} pages)",
+                         "use the physical page number from the search hit (1-based)")
+        bitmap = pdf[page - 1].render(scale=scale, rev_byteorder=True)  # RGB(A/x) byte order
+        n, stride, w, h = bitmap.n_channels, bitmap.stride, bitmap.width, bitmap.height
+        buf = bytes(bitmap.buffer)
+    finally:
+        pdf.close()   # explicitly: an open working copy cannot be cleaned up on Windows
     rows = []
     for i in range(h):
         row = bytearray(buf[i * stride:i * stride + w * n])

@@ -34,7 +34,7 @@ manuals by default.
 ## Install
 
 Needs Python 3.9+ and [`pypdfium2`](https://github.com/pypdfium2-team/pypdfium2)
-(`pip install pypdfium2`).
+(`python3 -m pip install pypdfium2`).
 
 ```bash
 git clone https://github.com/SionVerhoef/find-manual.git
@@ -42,9 +42,14 @@ cd find-manual
 python3 install.py
 ```
 
+On Windows `python3` is usually not on the PATH: use `py -3` (the Python launcher) or
+`python` wherever this README says `python3`, as in `py -3 -m pip install pypdfium2` and
+`py -3 install.py`.
+
 This copies the skill to `~/.agents/skills/find-manual` (the open Agent Skills folder,
 read by Codex, Gemini CLI and GitHub Copilot) and links it from `~/.claude/skills/`
-(Claude Code, Copilot, Cursor). On Windows the link is a second copy. Start a new agent
+(Claude Code, Copilot, Cursor). On Windows the link is a second copy, so after updating
+the clone (`git pull`) run `install.py` again to refresh both copies. Start a new agent
 session afterwards. `python3 install.py --uninstall` removes both.
 
 First target is Claude Code desktop, where the page opens in the browser pane, or in Claude in Chrome or the system browser when the pane cannot show the PDF. Other
@@ -89,9 +94,12 @@ every test manual you keep in `manuals/` (gitignored; each `tests/testset_*.json
 where to get its PDF) and runs the test sets; `tests/evaluate.py` runs one set. Every
 change to indexing or ranking must keep the baselines (top-1 ≥ 38/42, top-3 42/42).
 `python3 -m unittest discover -s tests/unit` runs the unit tests (storage, lock, atomic
-writes, settings, cleanup, env check, link building, patterns, fetching and verification
-against a fake HTTP server), which need no PDFs and no network; set `FIND_MANUAL_HOME` to
-a scratch folder to keep them off your real data, as CI does.
+writes, settings, cleanup, env check, link building, patterns, index build, install,
+fetching and verification against a fake HTTP server), which need no PDFs and no network;
+set `FIND_MANUAL_HOME` to a scratch folder to keep them off your real data, as CI does.
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs them on Ubuntu, macOS and
+Windows with Python 3.9 and the current 3.x, plus an install and uninstall smoke test on
+each; on Windows run the same commands with `py -3`.
 
 ## License
 

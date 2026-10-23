@@ -116,9 +116,9 @@ class Settings(unittest.TestCase):
     def test_cli_round_trip(self):
         import subprocess
         script = Path(__file__).resolve().parents[2] / "scripts" / "settings.py"
-        out = subprocess.check_output([sys.executable, str(script), "set", "retention.pdf_hours", "3d"], text=True)
+        out = subprocess.check_output([sys.executable, str(script), "set", "retention.pdf_hours", "3d"], encoding="utf-8")
         self.assertEqual(json.loads(out)["value"], 72)
-        out = subprocess.check_output([sys.executable, str(script), "get", "retention.pdf_hours"], text=True)
+        out = subprocess.check_output([sys.executable, str(script), "get", "retention.pdf_hours"], encoding="utf-8")
         self.assertEqual(json.loads(out)["value"], 72)
 
 

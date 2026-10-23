@@ -56,6 +56,17 @@ class Index:
         self.labels = {pg: (lb or str(pg)) for pg, lb in self.db.execute("SELECT page, label FROM pages")}
         self._pages = {}
 
+    def close(self):
+        """Close the index explicitly: left to garbage collection, the connection keeps the
+        file open on Windows, where an open index cannot be rebuilt or cleaned up."""
+        self.db.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     # ---- reading --------------------------------------------------------------
     def page_text(self, page):
         if page not in self._pages:
@@ -208,20 +219,20 @@ def main():
     ap.add_argument("--depth", type=int, default=2, help="outline levels to print with --outline")
     a = ap.parse_args()
 
-    idx = Index(a.doc)
-    doc_id = idx.meta.get("doc_id", "")
-    if a.outline:
-        storage.emit({"doc_id": doc_id, "sections": len(idx.outline), "outline": idx.compact_outline(a.depth)})
-        return
-    if not a.query.strip():
-        storage.fail("no_query", "the query is empty",
-                     "rewrite the user's question into search terms in the manual's own vocabulary and retry")
-    if a.section is not None and not 0 <= a.section < len(idx.outline):
-        storage.fail("no_section", f"section {a.section} is not in the outline", "run with --outline to see the ids")
-    threshold = float(storage.settings().get("doubt_threshold", 0.85))
-    res = idx.search(a.query, a.k, a.section, threshold)
-    res.update(doc_id=doc_id, query=a.query, doubt_threshold=threshold)
-    storage.emit(res)
+    with Index(a.doc) as idx:
+        doc_id = idx.meta.get("doc_id", "")
+        if a.outline:
+            storage.emit({"doc_id": doc_id, "sections": len(idx.outline), "outline": idx.compact_outline(a.depth)})
+            return
+        if not a.query.strip():
+            storage.fail("no_query", "the query is empty",
+                         "rewrite the user's question into search terms in the manual's own vocabulary and retry")
+        if a.section is not None and not 0 <= a.section < len(idx.outline):
+            storage.fail("no_section", f"section {a.section} is not in the outline", "run with --outline to see the ids")
+        threshold = float(storage.settings().get("doubt_threshold", 0.85))
+        res = idx.search(a.query, a.k, a.section, threshold)
+        res.update(doc_id=doc_id, query=a.query, doubt_threshold=threshold)
+        storage.emit(res)
 
 
 if __name__ == "__main__":

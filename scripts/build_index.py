@@ -100,8 +100,21 @@ def join_lines(lines):
 
 
 def build(pdf_path, out_path, doc_id, url=""):
-    t0 = time.time()
+    """Index `pdf_path` into the SQLite file `out_path`; returns the build stats. The PDF and
+    the database are closed explicitly, whatever happens: a handle left to garbage collection
+    keeps the file open on Windows, where an open file cannot be replaced or removed."""
     doc = pdfium.PdfDocument(str(pdf_path))
+    handles = {}
+    try:
+        return _build(doc, pdf_path, out_path, doc_id, url, handles)
+    finally:
+        if handles.get("db") is not None:
+            handles["db"].close()
+        doc.close()
+
+
+def _build(doc, pdf_path, out_path, doc_id, url, handles):
+    t0 = time.time()
     n = len(doc)
     pages = []
     for i in range(n):
@@ -148,7 +161,7 @@ def build(pdf_path, out_path, doc_id, url=""):
     for o in outline:
         heading_y.setdefault(o[2], []).append(o[3])
 
-    db = sqlite3.connect(str(out_path))
+    db = handles["db"] = sqlite3.connect(str(out_path))
     db.executescript(SCHEMA)
 
     parents = {}
@@ -286,13 +299,16 @@ def build(pdf_path, out_path, doc_id, url=""):
 
 
 def read_meta(path):
+    """The meta table of an index, or {} for a missing, damaged or foreign file."""
+    db = None
     try:
         db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        meta = dict(db.execute("SELECT k, v FROM meta").fetchall())
-        db.close()
-        return meta
+        return dict(db.execute("SELECT k, v FROM meta").fetchall())
     except sqlite3.Error:
         return {}
+    finally:
+        if db is not None:
+            db.close()
 
 
 def main():
@@ -309,7 +325,7 @@ def main():
                      "check the path, or fetch the manual with scripts/fetch.py get")
     if pdfium is None:
         storage.fail("no_pdf_lib", "pypdfium2 is not installed",
-                     "run: python3 -m pip install --user pypdfium2 — then retry; see reference/fallbacks.md")
+                     f"run: {storage.pip_hint()} — then retry; see reference/fallbacks.md")
     doc_id = storage.doc_id_for(pdf)
     out = Path(a.out).expanduser() if a.out else storage.index_path(doc_id)
 
@@ -333,7 +349,13 @@ def main():
                 tmp.unlink()
             storage.fail("bad_pdf", f"{pdf.name}: {e}",
                          "the file is not a readable PDF (encrypted or damaged): download it again or ask the user for another copy")
-        os.replace(tmp, out)
+        try:
+            storage.replace_file(tmp, out)   # retried: on Windows an index another process is reading cannot be replaced
+        except storage.InUse as e:
+            if tmp.exists():
+                tmp.unlink()
+            storage.fail("index_in_use", str(e),
+                         "the index is in use by another program; wait a moment and run the command again")
     result = dict(stats, index=str(out), cached=False, size=out.stat().st_size,
                   storage=storage.resolve()["source"] if not a.out else "explicit")
     if stats["text_pages"] == 0:

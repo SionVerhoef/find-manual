@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Windows readiness before the public release: CI runs the unit suite and an install /
+  uninstall smoke test on Ubuntu, macOS and Windows with Python 3.9 and the current 3.x,
+  with `pypdfium2` installed so the fetch, index and page tests run too. Fixes found by
+  inspection, each with a test: every script prints UTF-8 on any console (a cp1252 pipe
+  raised on `×` and `→`); an index or PDF that another program holds open is retried and
+  then a handled error (`index_in_use`, `file_in_use`) instead of a crash, and `cleanup.py`
+  lists such files under `skipped` and tries again next run (`locked` now names a held write
+  lock); a dead writer's lock is broken on Windows too (process liveness via `OpenProcess`);
+  the pip hint names the interpreter that is running; `env_check.py`, SKILL.md and
+  `reference/` give the Windows system-browser command `cmd /c start "" "<url>"`; the
+  sandbox tests block with a file where a folder is needed instead of `chmod`, the symlink
+  test skips without the privilege. README: `py -3` / `python` on Windows, and the
+  `~/.claude/skills` copy is refreshed by running `install.py` again after an update.
 - Opener order for Claude Code desktop and the Claude app: browser pane → Claude in Chrome
   → system browser → page image, each tried once (app build 3.1623's pane downloads every
   PDF; Chrome's viewer displays the link at the hit). `reference/hosts.md`, SKILL.md step 6.
