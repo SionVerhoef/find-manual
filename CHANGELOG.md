@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Opener order for Claude Code desktop and the Claude app: browser pane → Claude in Chrome
+  → system browser → page image, each tried once (app build 3.1623's pane downloads every
+  PDF; Chrome's viewer displays the link at the hit). `reference/hosts.md`, SKILL.md step 6.
 - M5 end-to-end run in Claude Code desktop: ten real questions through the installed skill
   (three manuals; model name → web search, user link, local file, catalog; parameter, trip
   code, table, vague symptom, wiring, `--firmware`; two pick-lists; weak result → variants →

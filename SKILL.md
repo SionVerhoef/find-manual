@@ -85,12 +85,14 @@ and runs at the start of a lookup. "Keep this manual" → `scripts/cleanup.py pi
 
 6. **Open the page once.** `scripts/page.py link <doc_id> <page> <y> [--pane-width PX]`
    returns the vendor's URL with `#page=N&zoom=Z,0,T&navpanes=0` (pass the pane's
-   `innerWidth` when it reads above 0). Open it in a **new tab**, or force a reload:
-   changing only the fragment of an open tab does nothing. One load per lookup; each
-   load downloads the PDF again. A browser that answers with a download instead of a
-   page: do not retry, show `page.py image` inline with the plain link and open the
-   link in the system browser where you can. A local file may open without its
-   fragment: state the page. Which tool opens it is in `reference/hosts.md`.
+   `innerWidth` when it reads above 0; keep the default for a full browser window).
+   Always a **new tab**: changing only the fragment of an open tab does nothing. Openers,
+   in order, each tried once: the built-in browser pane → Claude in Chrome → the system
+   browser (`open` / `xdg-open` / `start`) → `page.py image` inline with the plain link.
+   A pane that answers with a download instead of a page is not retried: next opener,
+   and say in one line where the page opened. Each load downloads the PDF again, so one
+   lookup opens the page once. A local file may open without its fragment: state the
+   page. Details per host are in `reference/hosts.md`.
 
 7. **Answer only from the text that was read.** Cite the manual, issue/version, printed
    page label and section, and give the confidence label. Warn on a firmware mismatch.

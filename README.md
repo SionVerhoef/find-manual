@@ -47,7 +47,7 @@ read by Codex, Gemini CLI and GitHub Copilot) and links it from `~/.claude/skill
 (Claude Code, Copilot, Cursor). On Windows the link is a second copy. Start a new agent
 session afterwards. `python3 install.py --uninstall` removes both.
 
-First target is Claude Code desktop, where the page opens in the browser pane. Other
+First target is Claude Code desktop, where the page opens in the browser pane, or in Claude in Chrome or the system browser when the pane cannot show the PDF. Other
 tools open the system browser or show the page image inline; see
 [reference/hosts.md](reference/hosts.md).
 

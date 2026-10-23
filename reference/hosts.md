@@ -5,11 +5,33 @@ vendor's own URL (or the local `file://` path); never a copy served by the skill
 
 | Environment | Opens in | How |
 | --- | --- | --- |
-| Claude Code desktop (first target) | Browser pane | Browser tool: open the link in a **new tab** |
-| Claude app with a browser | Built-in browser or Claude in Chrome | Browser tool: new tab |
+| Claude Code desktop (first target) | Browser pane, then Claude in Chrome, then the system browser, then the page image | In that order; see *Opener order* below |
+| Claude app with a browser | Built-in browser or Claude in Chrome | Same order |
 | Codex app | In-app browser (public pages only) | Browser tool: new tab |
 | CLIs (Claude Code, Codex, Gemini, Copilot), Cursor | System browser | `open` (macOS) / `xdg-open` (Linux) / `start` (Windows) with the link |
 | No browser available | Inline | `page.py image` → show the PNG, plus the plain link |
+
+## Opener order (Claude Code desktop and the Claude app)
+
+Try each opener once, in this order, and stop at the first that displays the page. Say
+which one was used in one line only when it is not the pane, because the user then has
+to look elsewhere.
+
+1. **Built-in browser pane** (`mcp__Claude_Browser__*`, or the `mcp__remote-devices__…`
+   variant): open the link in a **new tab** (`preview_start` with the URL). Done when the
+   PDF displays. When the pane answers "responded with a file download instead of a page"
+   (a save dialog) or the tool is missing, do not retry that URL there: next opener.
+2. **Claude in Chrome** (`mcp__claude-in-chrome__*`): `tabs_create_mcp`, then `navigate`
+   with the link. Chrome's viewer honours page, zoom, position and `navpanes` (tested 23 Oct
+   2026: the C200 guide opened at page 158, 134 %, with the hit in view; a vendor redirect
+   kept the fragment). Leave the tab open for the user. Extension not connected, or the
+   site declined: next opener.
+3. **System browser**: `open` (macOS) / `xdg-open` (Linux) / `start` (Windows) with the
+   link. Displays the PDF at the fragment, outside the app.
+4. **Page image inline**: `page.py image <doc_id> <page>`, shown with the plain link.
+
+`--pane-width`: pass the pane's `innerWidth` when it reads above 0. For Chrome or the
+system browser keep the 800 px default: fitting a full window (~1500 px) gives ~250 %.
 
 ## The link
 
@@ -25,7 +47,8 @@ vendor's own URL (or the local `file://` path); never a copy served by the skill
   is assumed.
 - `T`: the hit's top position minus a small margin, in PDF points counted from the top of
   the page (Chromium). `page.py link --viewer firefox` converts to bottom-up for viewers
-  that follow the PDF spec.
+  that follow the PDF spec. `T` is the top of the hit *block*: inside a long table block
+  the ID itself can sit lower in the view.
 - `navpanes=0`: hides the thumbnail sidebar, which otherwise takes half of a narrow pane.
 - A viewer that ignores the extra parts still honours `#page=N`.
 - The URL is the one stored with the index (`build_index.py --url`, set by `fetch.py`);
@@ -55,8 +78,8 @@ vendor's own URL (or the local `file://` path); never a copy served by the skill
   "responded with a file download instead of a page" and a save dialog, although the
   servers send `application/pdf` without a `Content-Disposition` header; the 21 Oct test on
   an earlier build displayed the same files. Try the link once; when it is refused, do not
-  retry it: show `page.py image` with the plain link and `open` the link in the system
-  browser, which displays the PDF at the fragment.
+  retry it there: go on with the *Opener order* above (Claude in Chrome displayed the same
+  link at the hit the same day).
 - A local file opens in a tab of its own as a static snapshot: `#page=` is ignored and the
   page tools cannot act on that tab. State the page number in the answer.
 - The pane shows a page as a background page while hidden; `show_pane` only works when the

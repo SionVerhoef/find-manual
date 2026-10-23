@@ -27,5 +27,5 @@ names the next route below.
 | The search finds only the HTML edition of the manual | The PDF usually sits on the vendor's download host: fetch that page for its PDF link, or try the vendor's download centre; `resolve --url` verifies whatever is tried. |
 | Two copies of the same manual (another host, mirror or file) | `resolve` keeps one (best label, the `--vendor` host, newest date, most recently used) and lists the others under `duplicates`: one manual, no question to the user. |
 | The hit is a long table block, or a caption below its table | `page.py context … --find <ID>` starts at the ID; read the neighbouring page when the table continues there. |
-| The browser answers with a download instead of a page | Do not retry the URL. Show `page.py image` inline with the plain link, and `open` / `xdg-open` / `start` the link in the system browser where that is allowed. |
+| The browser pane answers with a download instead of a page | Do not retry the URL there. Next opener, each once: Claude in Chrome (new tab) → system browser (`open` / `xdg-open` / `start`) → `page.py image` inline with the plain link. Order and tests in `reference/hosts.md`. |
 | A local file opens without its fragment | State the printed page label and section in the answer. |
