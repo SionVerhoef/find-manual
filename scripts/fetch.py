@@ -871,6 +871,46 @@ def sort_candidates(cands, doc_type=None):
     return cands
 
 
+def dup_key(c):
+    """Copies of one manual: the same title, issue and page count, wherever they were found."""
+    title = re.sub(r"\W+", " ", (c.get("title") or "").lower()).strip()
+    version = (c.get("version") or "").lower().strip()
+    if not title or not version:
+        return None
+    return (title, version, c.get("pages"))
+
+
+def collapse_duplicates(cands, vendor=None):
+    """Two copies of the same manual (same title, issue and page count; another host, mirror
+    or file) are one candidate, so they never count as close candidates. The copy kept is
+    the best label, then the vendor's own domain (--vendor), then the newest date, then the
+    most recently used; the others are listed under `duplicates`."""
+    groups, order = {}, []
+    for c in cands:
+        k = dup_key(c)
+        if k is None:
+            k = ("", id(c))
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(c)
+    out = []
+    for k in order:
+        members = groups[k]
+        if len(members) > 1:
+            members.sort(key=lambda c: (c.get("date") or "", c.get("last_used") or ""), reverse=True)
+            members.sort(key=lambda c: (LABEL_RANK.get(c.get("label"), 3),
+                                        0 if vendor and vendor.lower() in host_of(c.get("url") or "") else 1))
+            best = members[0]
+            best["duplicates"] = [{"source": d.get("source"), "url": d.get("url"), "path": d.get("path"),
+                                   "date": d.get("date"), "doc_id": d.get("doc_id"), "label": d.get("label")}
+                                  for d in members[1:]]
+            out.append(best)
+        else:
+            out.append(members[0])
+    return out
+
+
 def catalog_candidates(model, doc_type, firmware, languages):
     tokens = model_tokens(model)
     out = []
@@ -987,11 +1027,12 @@ def resolve(model, doc_type=None, lang=None, url=None, path=None, firmware=None,
 
     def finish(stop=False):
         sort_candidates(cands, doc_type)
-        out["candidates"] = cands
-        best = cands[0] if cands else None
+        merged = collapse_duplicates(cands, vendor)
+        out["candidates"] = merged
+        best = merged[0] if merged else None
         out["label"] = best["label"] if best else None
-        if best and len(cands) > 1 and best["label"] != "Verified" and cands[1]["label"] == best["label"] \
-                and cands[1]["model_match"] == best["model_match"] and cands[1].get("source") == best.get("source"):
+        if best and len(merged) > 1 and best["label"] != "Verified" and merged[1]["label"] == best["label"] \
+                and merged[1]["model_match"] == best["model_match"] and merged[1].get("source") == best.get("source"):
             out["label"] = "Unsure"
             out["close"] = True
             out["note"] = "close candidates: ask the user which one (title, issue, link)"

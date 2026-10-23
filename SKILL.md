@@ -44,18 +44,23 @@ and runs at the start of a lookup. "Keep this manual" → `scripts/cleanup.py pi
    catalog of manuals used before, the vendor document maps and the local manuals folder,
    verifies every candidate from its own title page and front matter, and returns
    `candidates` best first, each with a `label`. It stops at the first **Verified** one.
-   `"next": "web_search"` means nothing was found on this machine: search with your own
-   web tool using the `queries` given, the vendor's own domain first, and run
-   `resolve --model M --url U` for each PDF link, best first; the script downloads it,
-   verifies it and labels it. Then `scripts/fetch.py get --url U | --path P` returns the
-   `doc_id`, the private working copy and the index (cached from the second time on).
+   Pass `--vendor DOMAIN` when the brand is known. `"next": "web_search"` means nothing
+   was found on this machine: search with your own web tool using the `queries` given,
+   the vendor's own domain first, and run `resolve --model M --url U` for each PDF link,
+   best first; the script downloads it, verifies it and labels it. A search that only
+   finds the HTML edition: the PDF usually sits on the vendor's download host (fetch that
+   page for its PDF link, or try the download centre; `resolve --url` verifies it).
+   Then `scripts/fetch.py get --url U | --path P` returns the `doc_id`, the private
+   working copy and the index (cached from the second time on). A candidate's
+   `duplicates` are other copies of the same title and issue: one manual, not a choice.
    The rules, the `--doc-type` words and the catalog are in `reference/verification.md`.
    - **Verified**: model and firmware range stated and matching → go on.
    - **Likely**: model matches, no firmware range stated → confirm with the user first
      (title, issue/version, link).
    - **Unsure**: close candidates, a partial match or a firmware mismatch → ask first.
-   - `ask_firmware: true` → ask for the device's firmware. Pass `firmware_hint` on when
-     given (where the manual says to read it), then run `resolve` again with `--firmware V`.
+   - `ask_firmware: true` → ask for the device's firmware, in the same message as the
+     Likely confirmation. Pass `firmware_hint` on when given (where the manual says to
+     read it), then run `resolve` again with `--firmware V`.
    - A `warning` that the manual is newer than the device's firmware → look for an older
      issue; if there is none, say that some functions may not exist on that device.
 
@@ -68,19 +73,24 @@ and runs at the start of a lookup. "Keep this manual" → `scripts/cleanup.py pi
    label, position, section path, score and snippet, plus `doubt`. If `doubt` is true
    (second score at least 0.85 × the first), show a pick-list (page, section, one line)
    and ask the user which one. Any doubt about manual, firmware or page → ask.
-   Still weak after the variants? `scripts/search.py <doc_id> --outline` gives the compact
-   table of contents; pick a section and search inside it with `--section ID`.
+   Still weak after the variants? `scripts/search.py <doc_id> --outline --depth 1` gives
+   the chapters (`--depth 2` the sections); pick one and search inside it with `--section ID`.
 
-5. **Read.** `scripts/page.py context <doc_id> <page> <y>` gives the hit block and its
-   neighbours (~300–650 tokens). Read the next page only if a table or procedure
-   continues. Render `scripts/page.py image <doc_id> <page>` only for drawings when the
-   text is not enough.
+5. **Read.** `scripts/page.py context <doc_id> <page> <y> --x <x> [--find <ID>]` gives
+   the hit block and its neighbours in reading order (~300–650 tokens); `x` and `y` are
+   the hit's, `--find` starts a long table block at the ID searched for. Read the
+   neighbouring page only if a table or procedure continues there or a caption sits
+   below its table. Render `scripts/page.py image <doc_id> <page>` only for drawings
+   when the text is not enough.
 
 6. **Open the page once.** `scripts/page.py link <doc_id> <page> <y> [--pane-width PX]`
-   returns the vendor's URL with `#page=N&zoom=Z,0,T&navpanes=0`. Open it in a **new
-   tab**, or force a reload: changing only the fragment of an open tab does nothing.
-   One load per lookup; each load downloads the PDF again. Which tool opens it is in
-   `reference/hosts.md`; a local file opens as `file://`.
+   returns the vendor's URL with `#page=N&zoom=Z,0,T&navpanes=0` (pass the pane's
+   `innerWidth` when it reads above 0). Open it in a **new tab**, or force a reload:
+   changing only the fragment of an open tab does nothing. One load per lookup; each
+   load downloads the PDF again. A browser that answers with a download instead of a
+   page: do not retry, show `page.py image` inline with the plain link and open the
+   link in the system browser where you can. A local file may open without its
+   fragment: state the page. Which tool opens it is in `reference/hosts.md`.
 
 7. **Answer only from the text that was read.** Cite the manual, issue/version, printed
    page label and section, and give the confidence label. Warn on a firmware mismatch.

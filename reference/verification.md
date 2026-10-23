@@ -23,6 +23,17 @@ What `scripts/fetch.py` does and returns. SKILL.md holds the short form.
 Otherwise every candidate comes back, best first (label, then how well the model matched,
 then the document type, then the newest issue or date).
 
+**Copies.** Two candidates with the same title, issue and page count are one manual found
+twice (another host, a mirror, a local copy). `resolve` keeps one — the best label, then the
+`--vendor` host, then the newest date, then the most recently used — and lists the others
+under its `duplicates` (source, url or path, date, doc_id, label). Copies never count as
+close candidates. A different issue or page count is a different document and stays apart.
+
+**Only the HTML edition found.** Many vendors publish the manual as web pages and keep the
+PDF on a separate download host that search engines rank low or not at all. Fetch the HTML
+edition's page for its PDF link, or try the vendor's download centre; `resolve --url`
+verifies whatever is tried from the document itself, so a wrong guess costs nothing.
+
 ## Verification
 
 Evidence comes from the document itself, never from a listing or a file name alone: the

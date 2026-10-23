@@ -26,6 +26,10 @@ class Link(unittest.TestCase):
         self.assertEqual(build_link(URL, 2, 100, *A4),
                          build_link(URL, 2, 100, *A4, pane_width=DEFAULT_PANE_WIDTH, margin=24))
 
+    def test_hidden_pane_width_zero_uses_the_default(self):
+        # a hidden browser pane reports innerWidth 0
+        self.assertEqual(build_link(URL, 2, 100, *A4, pane_width=0), build_link(URL, 2, 100, *A4))
+
     def test_local_file_urls_keep_the_fragment(self):
         url = build_link("file:///Users/me/manuals/c200.pdf", 7, 50, *A4)
         self.assertTrue(url.startswith("file:///Users/me/manuals/c200.pdf#page=7&zoom="))

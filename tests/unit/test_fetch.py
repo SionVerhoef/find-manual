@@ -367,6 +367,20 @@ class Catalog(Home):
         self.assertNotEqual(self.catalog()["a" * 16]["last_used"], old)
         self.assertNotIn("next", r)
 
+    def test_two_copies_of_one_manual_are_one_candidate_not_close(self):
+        for d, date, host in (("a", "2019-10", "cdn.example"), ("b", "2022-12", "vendor.example")):
+            fetch.catalog_update(d * 16, {"title": "Control User Guide Widgetron W200/W300", "version": "Issue 2",
+                                          "pages": 176, "date": date, "models": ["Widgetron W200"],
+                                          "doc_type": "user-guide", "url": f"https://{host}/w200.pdf"})
+        r = fetch.resolve("Widgetron W200")
+        self.assertEqual(r["label"], "Likely")
+        self.assertNotIn("close", r)
+        self.assertEqual(len(r["candidates"]), 1)
+        self.assertEqual(r["candidates"][0]["doc_id"], "b" * 16)          # the newest copy
+        self.assertEqual(r["candidates"][0]["duplicates"][0]["doc_id"], "a" * 16)
+        r = fetch.resolve("Widgetron W200", vendor="cdn.example")
+        self.assertEqual(r["candidates"][0]["doc_id"], "a" * 16)          # the vendor's own host
+
     def test_close_candidates_make_the_result_unsure(self):
         for d in ("a", "b"):
             fetch.catalog_update(d * 16, {"title": f"Widgetron W200 guide {d}", "models": ["Widgetron W200"],
@@ -598,6 +612,48 @@ class DownloadErrors(Home):
             r2 = fetch.get(url=self.URL)
         self.assertTrue(r2["cached"])
         self.assertEqual(r2["freshness"], "offline, not checked")
+
+
+class Duplicates(unittest.TestCase):
+    """resolve: two copies of one manual (same title, issue and page count) are one candidate."""
+
+    def cand(self, **kw):
+        c = {"source": "catalog", "label": "Likely", "title": "Control User Guide Widgetron W200/W300",
+             "version": "Issue 2", "pages": 176, "model_match": "exact", "date": "2019-10",
+             "url": "https://cdn.example/w200.pdf", "doc_id": "a" * 16, "last_used": "2026-10-22T22:21:35"}
+        c.update(kw)
+        return c
+
+    def test_same_title_issue_and_pages_collapse_to_the_newest(self):
+        old = self.cand()
+        new = self.cand(date="2022-12", url="https://vendor.example/w200.pdf", doc_id="b" * 16)
+        out = fetch.collapse_duplicates([old, new])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["doc_id"], "b" * 16)
+        self.assertEqual([d["doc_id"] for d in out[0]["duplicates"]], ["a" * 16])
+        self.assertEqual(out[0]["duplicates"][0]["url"], "https://cdn.example/w200.pdf")
+
+    def test_the_vendor_host_wins_over_a_newer_mirror(self):
+        old = self.cand()
+        new = self.cand(date="2022-12", url="https://vendor.example/w200.pdf", doc_id="b" * 16)
+        out = fetch.collapse_duplicates([new, old], vendor="cdn.example")
+        self.assertEqual(out[0]["doc_id"], "a" * 16)
+        self.assertEqual(out[0]["duplicates"][0]["doc_id"], "b" * 16)
+
+    def test_the_better_label_wins_over_the_newer_date(self):
+        unsure = self.cand(label="Unsure", date="2024-01", doc_id="c" * 16)
+        likely = self.cand()
+        out = fetch.collapse_duplicates([unsure, likely])
+        self.assertEqual(out[0]["doc_id"], "a" * 16)
+
+    def test_another_issue_or_page_count_stays_apart(self):
+        self.assertEqual(len(fetch.collapse_duplicates([self.cand(), self.cand(version="Issue 3", doc_id="d" * 16)])), 2)
+        self.assertEqual(len(fetch.collapse_duplicates([self.cand(), self.cand(pages=180, doc_id="e" * 16)])), 2)
+        self.assertNotIn("duplicates", fetch.collapse_duplicates([self.cand()])[0])
+
+    def test_without_a_title_or_issue_nothing_collapses(self):
+        self.assertEqual(len(fetch.collapse_duplicates([self.cand(title=""), self.cand(title="")])), 2)
+        self.assertEqual(len(fetch.collapse_duplicates([self.cand(version=""), self.cand(version="")])), 2)
 
 
 if __name__ == "__main__":

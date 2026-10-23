@@ -9,9 +9,11 @@ opens the PDF at the hit. A 200-page manual costs ~300–650 tokens per answer i
 the whole document in context.
 
 **Status: in development.** The index and search core is validated (3 vendors, 42 test
-questions, 90 % top-1, 100 % top-3); storage, settings, first-run setup, cleanup, and
-finding, verifying, downloading and cataloguing the manual (`fetch.py`) are in. Next is
-the end-to-end run in Claude Code desktop. See [CHANGELOG.md](CHANGELOG.md).
+questions, 90 % top-1, 100 % top-3); storage, settings, first-run setup, cleanup, finding,
+verifying, downloading and cataloguing the manual (`fetch.py`), and the end-to-end run in
+Claude Code desktop (ten real questions, cited answers) are in. Next are vendor document
+maps and documentation websites, the other agent tools, and the public release. See
+[CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
 

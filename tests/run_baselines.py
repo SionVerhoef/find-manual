@@ -9,8 +9,10 @@ more, or an index is 1 MB or more per 200 pages (the M2 "done when" from the des
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +29,10 @@ def main():
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
     manuals = Path(a.manuals).expanduser()
+    # Build into a scratch folder unless the caller set one: the real cache must not get test
+    # indexes, and a test manual that is also catalogued would lose its stored vendor URL.
+    env = dict(os.environ)
+    env.setdefault("FIND_MANUAL_HOME", tempfile.mkdtemp(prefix="find-manual-baselines-"))
 
     rows, failures, skipped = [], [], []
     for ts in sorted((ROOT / "tests").glob("testset_*.json")):
@@ -37,7 +43,7 @@ def main():
             continue
         print(f"== {data['manual']}")
         r = json.loads(subprocess.check_output(
-            [sys.executable, str(ROOT / "scripts" / "build_index.py"), str(pdf), "--force"], text=True))
+            [sys.executable, str(ROOT / "scripts" / "build_index.py"), str(pdf), "--force"], text=True, env=env))
         if "error" in r:
             failures.append(f"{ts.name}: build failed: {r['message']}")
             continue

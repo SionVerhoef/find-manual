@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read, link and render one page of an indexed manual.
 
-Usage: page.py context <doc_id> <page> <y> [--max-chars 1600]
+Usage: page.py context <doc_id> <page> <y> [--x X] [--find ID] [--max-chars 1600]
        page.py link    <doc_id> <page> <y> [--pane-width PX] [--url URL] [--viewer chromium|firefox] [--margin PT]
        page.py image   <doc_id> <page> [--scale 1.5]
 
@@ -38,7 +38,7 @@ def page_row(db, page):
         storage.fail("no_page", f"page {page} is not in the index",
                      "use the physical page number from the search hit (1-based)")
     label, w, h, z = row
-    return label, w, h, zlib.decompress(z).decode()
+    return label or str(page), w, h, zlib.decompress(z).decode()
 
 
 def section_path(db, sec):
@@ -53,20 +53,44 @@ def section_path(db, sec):
 
 
 # ---- context ----------------------------------------------------------------
-def context(db, page, y, max_chars=1600):
+def context(db, page, y, max_chars=1600, x=None, find=None):
+    """The read package: the hit block and its neighbours on the page, in reading order
+    (top-down, then left-right), up to max_chars. The sibling columns of the hit's row
+    (a table split into column blocks) are always included; blocks above the hit are added
+    only when the page ends soon after it. `find` (the ID searched for) starts a long block
+    at the line that holds it."""
     label, w, h, text = page_row(db, page)
-    rows = db.execute("SELECT id, y, sec, off, len FROM blocks WHERE page=? AND kind!='contents' ORDER BY id",
+    rows = db.execute("SELECT id, x, y, sec, off, len FROM blocks WHERE page=? AND kind!='contents'",
                       (page,)).fetchall()
     if not rows:
         return {"page": page, "label": label, "y": y, "section": "", "text": "", "chars": 0}
-    start = min(range(len(rows)), key=lambda i: abs(rows[i][1] - y))  # the hit block
-    out = []
-    for _, _, _, off, ln in rows[start:]:
-        out.append(text[off:off + ln])
-        if sum(len(x) for x in out) > max_chars:
+    rows.sort(key=lambda r: (round(r[2]), r[1]))
+    texts = [text[off:off + ln] for _, _, _, _, off, ln in rows]
+    # the hit block: nearest top position; x breaks the tie between blocks at the same height
+    hit = min(range(len(rows)), key=lambda i: (abs(rows[i][2] - y), abs(rows[i][1] - x) if x is not None else 0))
+    found = False
+    if find:
+        low = texts[hit].lower()
+        i = low.find(find.lower())
+        if i > 0:
+            texts[hit] = texts[hit][low.rfind("\n", 0, i) + 1:]
+            found = True
+    start = hit
+    while start > 0 and abs(rows[start - 1][2] - rows[hit][2]) <= 2:   # same row, other columns
+        start -= 1
+    out, total = [], 0
+    for t in texts[start:]:
+        out.append(t)
+        total += len(t)
+        if total > max_chars:
             break
+    for t in reversed(texts[:start]):   # above the hit, when the page ends soon after it
+        if found or total >= max_chars * 0.6 or total + len(t) > max_chars:
+            break                        # (not when the read was asked to start at the ID)
+        out.insert(0, t)
+        total += len(t)
     body = "\n".join(out)[:max_chars]
-    return {"page": page, "label": label, "y": rows[start][1], "section": section_path(db, rows[start][2]),
+    return {"page": page, "label": label, "y": rows[hit][2], "section": section_path(db, rows[hit][3]),
             "text": body, "chars": len(body)}
 
 
@@ -80,6 +104,8 @@ def build_link(url, page, y, page_width, page_height, pane_width=DEFAULT_PANE_WI
     Firefox. navpanes=0 hides the thumbnail sidebar. A viewer that ignores the extra
     parts still honours #page=N.
     """
+    if not pane_width or pane_width <= 0:   # a hidden pane reports innerWidth 0
+        pane_width = DEFAULT_PANE_WIDTH
     zoom = max(10, round(pane_width / page_width * 100)) if page_width else 100
     top = max(0.0, float(y) - margin)
     if viewer == "firefox":
@@ -149,6 +175,8 @@ def main():
     c = sub.add_parser("context")
     c.add_argument("doc"); c.add_argument("page", type=int); c.add_argument("y", type=float)
     c.add_argument("--max-chars", type=int, default=1600)
+    c.add_argument("--x", type=float, default=None, help="the hit's x from search.py: picks the block when two share a y")
+    c.add_argument("--find", default=None, help="an ID or phrase: start the text at the line that holds it (long table blocks)")
     l = sub.add_parser("link")
     l.add_argument("doc"); l.add_argument("page", type=int); l.add_argument("y", type=float)
     l.add_argument("--pane-width", type=float, default=DEFAULT_PANE_WIDTH, help="innerWidth of the pane in px")
@@ -163,7 +191,7 @@ def main():
     db, meta = open_index(a.doc)
     doc_id = meta.get("doc_id", "")
     if a.cmd == "context":
-        storage.emit(dict(doc_id=doc_id, **context(db, a.page, a.y, a.max_chars)))
+        storage.emit(dict(doc_id=doc_id, **context(db, a.page, a.y, a.max_chars, a.x, a.find)))
     elif a.cmd == "link":
         label, w, h, _ = page_row(db, a.page)
         url = build_link(source_url(meta, a.url), a.page, a.y, w, h, a.pane_width, a.viewer, a.margin)

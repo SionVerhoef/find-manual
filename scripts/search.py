@@ -52,7 +52,8 @@ class Index:
         self.path = str(path)
         self.outline = self.db.execute(
             "SELECT id, level, title, page, end_page, parent FROM outline ORDER BY id").fetchall()
-        self.labels = dict(self.db.execute("SELECT page, label FROM pages").fetchall())
+        # an index built before labels fell back to the physical number may hold ""
+        self.labels = {pg: (lb or str(pg)) for pg, lb in self.db.execute("SELECT page, label FROM pages")}
         self._pages = {}
 
     # ---- reading --------------------------------------------------------------
@@ -186,6 +187,7 @@ class Index:
                 "page": b["page"],
                 "label": self.labels.get(b["page"], str(b["page"])),
                 "y": b["y"],
+                "x": b["x"],
                 "section": self.section_path(b["sec"]) if b["sec"] is not None else "",
                 "section_id": b["sec"],
                 "score": round(s / top, 2),

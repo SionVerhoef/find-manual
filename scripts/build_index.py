@@ -37,7 +37,7 @@ except ImportError:  # reported as a handled error in main()
 SCHEMA_VERSION = storage.SCHEMA_VERSION
 SEP = "\n"
 WORD = re.compile(r"[a-z]+")
-HYPHENS = ("-", "‐", "­", "￾", "‑")
+HYPHENS = ("-", "‐", "­", "￾", "‑", "\x02")   # \x02: a hyphen glyph some fonts expose as a control character
 
 # Running headers and footers: words that recur on more than BOILER_PAGE_SHARE of the
 # pages inside the top and bottom BAND of the page height. A line in that band whose
@@ -186,7 +186,7 @@ def build(pdf_path, out_path, doc_id, url=""):
                     or pg in contents_pages)
         kind_page = "contents" if toc_like else "body"
         try:
-            label = doc.get_page_label(pg)
+            label = doc.get_page_label(pg) or str(pg + 1)   # no page-label tree: the physical number
         except Exception:
             label = str(pg + 1)
 

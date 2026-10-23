@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- M5 end-to-end run in Claude Code desktop: ten real questions through the installed skill
+  (three manuals; model name → web search, user link, local file, catalog; parameter, trip
+  code, table, vague symptom, wiring, `--firmware`; two pick-lists; weak result → variants →
+  outline → `--section`), logged under `evals/runs/`. Fixes: `resolve` collapses copies of
+  the same title, issue and page count into one candidate (`duplicates`), so two copies no
+  longer come back as close candidates; `page.py context` reads the page in reading order,
+  picks the hit by y then `--x`, keeps the sibling columns of a table row and takes `--find
+  <ID>` to start a long table block at the ID; `search.py` hits carry `x`; page labels fall
+  back to the physical number when the PDF has no label tree (build and read time); a pane
+  width of 0 (hidden pane) uses the default; a `\x02` hyphen glyph is undone like a hyphen;
+  `run_baselines.py` builds into a scratch home instead of the real cache. SKILL.md and
+  `reference/` gained the vendor-download-centre route, the browser-refuses-the-link and
+  local-file fallbacks, `--vendor`, `--x`/`--find` and the 23 Oct browser-pane findings.
 - M4 `scripts/fetch.py`: `resolve` finds the manual for a model (user link or file, catalog,
   vendor document maps, local manuals folders) and verifies each candidate from the
   document itself (title page and front matter: model with placeholders and family names,
